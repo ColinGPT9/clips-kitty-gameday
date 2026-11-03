@@ -434,6 +434,7 @@
   }
 
   function showView(name) {
+    if (S.view !== name) window.scrollTo(0, 0);
     S.view = name;
     for (const view of VIEWS) show('view-' + view, view === name);
     for (const link of document.querySelectorAll('.nav-item')) {
@@ -1034,7 +1035,7 @@
     show('meta-env-tag', fromEnv);
     show('meta-env-note', fromEnv);
     show('meta-remove', !fromEnv && saved);
-    show('meta-form', !fromEnv);
+    show('meta-form', !steps.meta);
     $('meta-save').disabled = !$('meta-key').value.trim();
 
     // 2. Relay
@@ -1292,6 +1293,7 @@
       if (had && !(await confirmInline(button, 'The old key stops working.', 'Make a new key'))) return;
       act(button, 'muse-note', async () => {
         const got = await api('POST', '/remote-approval/muse/token');
+        S.stepOpen['step-muse'] = true; // the key is inside the step: keep it open while it shows
         const key = (got && got.key) || '';
         takeRA(got);
         if (!key) { note('muse-note', "The relay didn't send a key. Try again.", 'bad'); return; }

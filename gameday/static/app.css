@@ -160,6 +160,8 @@ b, strong { font-weight: var(--ck-w-semi); }
 
 .brand { display: flex; align-items: center; gap: 10px; padding: 20px; color: var(--ck-ink); min-width: 0; }
 .brand:hover { text-decoration: none; }
+.side .brand { padding-right: 4px; }
+.side .brand-tag { white-space: nowrap; }
 .brand-mark { width: 34px; height: 34px; flex: none; }
 .brand-text { display: flex; flex-direction: column; min-width: 0; }
 .brand-name { font-size: var(--ck-t18); line-height: 1.25; font-weight: var(--ck-w-bold); }
@@ -715,7 +717,7 @@ select.input { cursor: pointer; }
 .offer .btns { margin-left: auto; }
 .offer-line { font-size: var(--ck-t12); line-height: 16px; color: var(--ck-dim); overflow-wrap: anywhere; }
 .offer-line a { text-decoration: underline; text-underline-offset: 2px; }
-.offer-line a + a { margin-left: var(--ck-gap-2); }
+.offer-line > a, .offer-line > span { margin-right: var(--ck-gap-2); }
 
 /* ---- setup ------------------------------------------------------------------------------- */
 
