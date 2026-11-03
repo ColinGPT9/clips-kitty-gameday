@@ -15,6 +15,7 @@ import numpy as np
 
 HOP_S = 0.5
 SMOOTH_HOPS = 3  # 1.5 s
+FLAT_DB = 1.0  # a track whose smoothed level never moves more than this has nothing to go on
 
 
 @dataclass
@@ -49,6 +50,12 @@ class Peak:
 def empty() -> Loudness:
     nothing = np.zeros(0, dtype=np.float64)
     return Loudness(HOP_S, nothing, nothing, nothing)
+
+
+def flat(loud: Loudness) -> bool:
+    """No sound to go on: none at all, or a level that never rises or falls
+    (a muted or silent track still has an audio stream)."""
+    return not len(loud.smooth) or float(np.ptp(loud.smooth)) < FLAT_DB
 
 
 def _finish(db: np.ndarray, hop_s: float) -> Loudness:

@@ -283,8 +283,11 @@ def fallback_moments(loud: loudness_mod.Loudness, *, duration_s: float, options:
                      turns: list[Turn] | None = None) -> list[Moment]:
     """The loudest moments as plain picks, for when Muse Spark can't be asked."""
     gap = max(options.min_clip_s + 2.0, 15.0)
-    peaks = loudness_mod.peaks(loud, min_z=1.5, min_gap_s=gap)
-    if len(peaks) < options.max_clips:
+    # A muted or silent track (or one steady hum): every hop ties, so the "loudest" would
+    # just be the first minutes. It is treated as no sound: the clips spread through the video.
+    flat = loudness_mod.flat(loud)
+    peaks = [] if flat else loudness_mod.peaks(loud, min_z=1.5, min_gap_s=gap)
+    if not flat and len(peaks) < options.max_clips:
         seen = {p.t for p in peaks}
         more = [p for p in loudness_mod.peaks(loud, min_z=-1e9, min_gap_s=gap) if p.t not in seen]
         peaks += [p for p in more if all(abs(p.t - q.t) >= gap for q in peaks)]
