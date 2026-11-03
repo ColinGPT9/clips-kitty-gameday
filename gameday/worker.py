@@ -333,8 +333,10 @@ class Worker:
                 end_s=clip.end_s, title=clip.title or "", category=clip.category or "other",
                 label=clip.label or "", score=clip.score or 0, team=clip.team or "", player=clip.player or "",
                 evidence=clip.evidence or "", transcript=clip.transcript or "",
-                thumb=str(Path(clip.thumb).resolve()) if clip.thumb else "",
-                debug=str(Path(clip.debug).resolve()) if clip.debug else "", follow=follow)
+                # Only files that were made: a thumbnail that failed to render is no poster.
+                thumb=str(Path(clip.thumb).resolve()) if clip.thumb and Path(clip.thumb).is_file() else "",
+                debug=str(Path(clip.debug).resolve()) if clip.debug and Path(clip.debug).is_file() else "",
+                follow=follow)
             saved += 1
         return saved
 

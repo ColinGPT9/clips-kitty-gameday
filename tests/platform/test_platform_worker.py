@@ -52,6 +52,20 @@ def test_a_job_runs_in_its_own_folder_and_its_stages_are_timed(make_app):
     assert [c["category"] for c in job["clips_list"]] == [p[0] for p in PLAYS]
 
 
+def test_a_thumbnail_that_failed_to_render_is_not_offered_as_a_poster(make_app):
+    class NoFirstThumb(FakePipeline):
+        def __call__(self, *args, **kwargs):
+            result = super().__call__(*args, **kwargs)
+            result.clips[0].thumb.unlink()  # both ffmpeg tries failed: the path, but no file
+            return result
+
+    app = make_app(pipeline=NoFirstThumb())
+    job_id = upload(app)
+    app.worker.run_next_job()
+    clips = sorted(app.get(f"/api/clips?job_id={job_id}").json(), key=lambda c: c["index"])
+    assert clips[0]["thumb_url"] is None and clips[1]["thumb_url"].endswith("/clip_02.jpg")
+
+
 def test_a_video_the_engine_cant_process_fails_the_job_with_its_words(make_app):
     app = make_app(pipeline=broken_pipeline)
     job_id = upload(app)
