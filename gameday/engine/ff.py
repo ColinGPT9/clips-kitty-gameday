@@ -1,8 +1,9 @@
-"""The ffmpeg jobs the engine runs: the soundtrack, SAM proxies, scene cuts and stills.
+"""The ffmpeg jobs the engine runs: the soundtrack, SAM proxies, tiny frames for
+finding the cuts, and stills.
 
-gameday.media.run_ffmpeg keeps ffmpeg quiet; scene detection needs its info
-output, and the render reads a command file by a relative name, so this
-module runs ffmpeg itself (same program, same settings).
+gameday.media.run_ffmpeg keeps ffmpeg quiet; the tiny frames need its info
+output for their times, and the render reads a command file by a relative
+name, so this module runs ffmpeg itself (same program, same settings).
 """
 
 from __future__ import annotations
@@ -11,6 +12,8 @@ import functools
 import re
 import subprocess
 from pathlib import Path
+
+import numpy as np
 
 from gameday import media
 from gameday.media import MediaError
@@ -100,12 +103,32 @@ def cut_part(proxy: Path, out: Path, *, start: float, seconds: float, timeout: f
 _SHOWINFO_TIME = re.compile(r"Parsed_showinfo.*?\bpts_time:\s*(-?[0-9.]+)")
 
 
-def scene_cuts(video: Path, *, threshold: float = 0.35, timeout: float | None = 300) -> list[float]:
-    """Seconds into `video` where the picture changes completely (a broadcast cut)."""
-    err = run(["-i", str(video), "-an", "-vf", f"select='gt(scene,{threshold})',showinfo", "-f", "null", "-"],
-              level="info", timeout=timeout)
-    times = sorted({round(float(m.group(1)), 3) for m in _SHOWINFO_TIME.finditer(err)})
-    return [t for t in times if t > 0]
+def tiny_frames(source: Path, *, start: float, seconds: float, width: int = 64, height: int = 36,
+                timeout: float | None = 600) -> tuple[np.ndarray, np.ndarray]:
+    """Every frame of [start, start + seconds] of `source` as a tiny RGB image, with
+    its time in the source: (frames shaped (n, height, width, 3), times). A source
+    faster than 30 frames a second is looked at every other frame or so."""
+    seek_at, skip = seek_plan(source, start)
+    chain = [f"trim=start={skip:.3f},setpts=PTS-STARTPTS"] if skip else []
+    chain += ["select='isnan(prev_selected_t)+gte(t-prev_selected_t,0.03)'",
+              f"scale={width}:{height}:flags=area", "showinfo"]
+    cmd = [media.FFMPEG, "-hide_banner", "-nostdin", "-v", "info"]
+    if seek_at > 0:
+        cmd += ["-ss", f"{seek_at:.3f}"]
+    cmd += ["-i", str(source), "-t", f"{max(0.0, seconds):.3f}", "-map", "0:v:0", "-an", "-sn", "-dn",
+            "-vf", ",".join(chain), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise MediaError(f"ffmpeg didn't run: {exc}") from exc
+    err = proc.stderr.decode("utf-8", "replace")
+    if proc.returncode != 0:
+        raise MediaError("ffmpeg failed: " + err.strip()[-600:])
+    size = width * height * 3
+    times = [float(m.group(1)) for m in _SHOWINFO_TIME.finditer(err)]
+    count = min(len(proc.stdout) // size, len(times))
+    frames = np.frombuffer(proc.stdout, dtype=np.uint8, count=count * size).reshape(count, height, width, 3)
+    return frames, np.asarray(times[:count], dtype=float) + start
 
 
 def grab_frame(video: Path, at_s: float, out: Path, *, width: int | None = None,
