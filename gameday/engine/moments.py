@@ -7,15 +7,27 @@ to the owner's rules:
 
 * Commentary comes after the play, so a clip starts a few seconds before
   the call and keeps the lead-up of the same possession. It never opens on
-  a cutaway.
-* It ends at the broadcast cut that ends the play, keeping what the
-  announcer says about it, but stops before a new sentence that begins more
-  than ~5.5 s after the play (2.5 s after a block or a steal). There is no
-  end pad past a cut, so the next scene never hangs over the end.
+  a cutaway, nor on a flash (under 2 s) of the shot before the play's.
+* It ends at the broadcast's first cut after the play (a close-up, the
+  bench, a timeout, a replay wipe), on the frame before it, keeping what the
+  announcer says before it, even mid-sentence. Only in one court shot does
+  the talk decide: it stops before a sentence begun more than 5.5 s after
+  the play (2.5 s after a block or a steal). Nothing of the next scene
+  shows at the end.
+* A cut that comes early may leave a clip shorter than the minimum length,
+  but never under 6 s: the lead-up opens on the shot before after all (at
+  least 2 s of it). A clip that still can't reach 6 s without crossing a
+  wipe or running past its cut isn't made (NoClip), nor is one whose play
+  time falls in a replay: the clip is of the live play, and a replay is no
+  guide to where that was.
+
+Which shots are cutaways (no ball, or the ball big in a close-up) only SAM
+3.1 can tell; without it, only the cuts are known.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections.abc import Callable
@@ -24,12 +36,21 @@ from dataclasses import dataclass
 from gameday.engine import loudness as loudness_mod
 from gameday.types import CATEGORIES, PipelineOptions, Turn
 
+log = logging.getLogger(__name__)
+
 SHORT_TAIL = ("blocks", "steals")
 TAIL_S = 5.5
 SHORT_TAIL_S = 2.5
 LEAD_BEFORE_CALL_S = 4.0
 MAX_LEAD_S = 25.0
 MAX_SPEECH_AFTER_S = 15.0
+CUT_GUARD_S = 0.04  # an end this far before its cut leaves out every frame of the next shot
+SHORTEST_S = 6.0  # an end at an early cut may make a clip shorter than the minimum, but not than this
+FLASH_S = 2.0  # an opening shot shorter than this, before a cut, is skipped
+TRANSITION_S = 0.8  # a "shot" shorter than this between two cuts is a wipe or a dissolve
+LATE_PLAY_S = 2.5  # a play time this far into a cutaway is the call heard over it: the play came before
+EVIDENCE_LAG_S = 2.0  # a play time this long after its call began may be a late guess
+REPLAY_S = 12.0  # a stretch this short between two wipes is a replay (live play runs for minutes between them)
 
 PLAIN_TITLES = {
     "clutch": "Clutch play", "dunks": "Huge dunk", "threes": "Big three", "blocks": "Big block",
@@ -60,6 +81,7 @@ class Moment:
     player: str = ""
     evidence: str = ""
     source: str = "spark"  # "spark", or "loudness" when Muse Spark wasn't used
+    called_s: float | None = None  # when the commentators began to say the evidence, if found
 
 
 @dataclass
@@ -67,6 +89,10 @@ class Sentence:
     start_s: float
     end_s: float
     text: str
+
+
+class NoClip(Exception):
+    """The rules can't cut this play into a clip; the message says why, for the run's warnings."""
 
 
 # --- what Muse Spark is asked ---------------------------------------------------
@@ -103,7 +129,9 @@ and the commentators get loud at big plays). Pick the plays worth posting as sho
 
 For each play give:
 - play_s: the moment the play happens (the shot goes in, the dunk, the block, the steal). Commentators call a play \
-just after it happens, so play_s is usually 0 to 2 seconds before the words that call it.
+just after it happens, so play_s is usually 0 to 2 seconds before the words that call it. Always the live play: \
+when they talk over a replay of it a little later ("let's watch that again", "another look"), the play is still \
+the live one, at its first call.
 - start_s: the start of the same possession's lead-up (bringing the ball up, the pass, the drive), a few seconds \
 before the call, usually 6 to 15 seconds before play_s.
 - end_s: when the commentators finish talking about the play. Never include a new sentence about something else.
@@ -112,7 +140,8 @@ before the call, usually 6 to 15 seconds before play_s.
 - title: a short title for viewers, in sentence case, at most 50 characters, no hashtags, no emojis. Use a \
 name only if the commentators said it.
 - team and player: as the commentators said them, or "" when they didn't.
-- evidence: the commentators' words that show the play happened, copied exactly from the transcript.
+- evidence: the commentators' words that show the play happened, copied exactly from the transcript; from the \
+live call, not the replay.
 - score: 0 to 100, how good the clip is. Big plays, clutch moments and a loud crowd score high; an ordinary \
 basket scores low.
 
@@ -173,8 +202,11 @@ def _number(value) -> float | None:
     return number if math.isfinite(number) else None
 
 
+_WORD = re.compile(r"[a-z0-9]+(?:['\-][a-z0-9]+)*")
+
+
 def _words(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+(?:['\-][a-z0-9]+)*", text.lower())
+    return _WORD.findall(text.lower())
 
 
 def was_said(name: str, known: str) -> bool:
@@ -248,6 +280,37 @@ def snap_to_loudness(moments: list[Moment], loud: loudness_mod.Loudness) -> None
         began = loudness_mod.onset(loud, peak)
         if m.play_s - 4.0 <= began <= m.play_s + 2.0:
             m.play_s = round(max(m.start_s, began), 2)
+
+
+def evidence_time(m: Moment, turns: list[Turn]) -> float | None:
+    """When the commentators began to say the moment's evidence, or None when it isn't
+    in the transcript. Muse Voice times turns, not words, so inside a turn the time is
+    shared out by length, as for sentences(): an estimate."""
+    words = _words(m.evidence)[:5]
+    if len(words) < 3:
+        return None
+    best = None
+    for turn in turns:
+        found = list(_WORD.finditer(turn.text.lower()))
+        said = [w.group(0) for w in found]
+        for i in range(len(said) - len(words) + 1):
+            if said[i:i + len(words)] == words:
+                share = found[i].start() / max(1, len(turn.text))
+                at = turn.start_s + max(0.0, turn.end_s - turn.start_s) * share
+                if best is None or abs(at - m.play_s) < abs(best - m.play_s):
+                    best = at
+    return None if best is None else round(best, 2)
+
+
+def note_the_calls(moments: list[Moment], turns: list[Turn]) -> None:
+    """Note when each play was called. A play time well after its call is a late guess,
+    or a play announced before it happened (a free throw "at the line"): SAM's shots
+    tell which, later (ending_cut). Meanwhile the lead-up reaches back past the call, so
+    SAM looks at enough of the game to cut the clip either way."""
+    for m in moments:
+        m.called_s = evidence_time(m, turns)
+        if m.called_s is not None and m.play_s > m.called_s + EVIDENCE_LAG_S:
+            m.start_s = round(max(0.0, min(m.start_s, m.called_s - 2 * LEAD_BEFORE_CALL_S)), 2)
 
 
 def rough_range(m: Moment, duration_s: float, options: PipelineOptions) -> tuple[float, float]:
@@ -333,7 +396,10 @@ def sentences(turns: list[Turn]) -> list[Sentence]:
     return out
 
 
-Cutaway = Callable[[float, float], bool]  # (shot start, shot end) -> no ball in that shot
+NO_BALL, CLOSE_UP = "no ball", "close-up"
+# (shot start, shot end) -> NO_BALL (the crowd, the bench), CLOSE_UP (the players up close, the ball in hand),
+# or "" for a shot of the game. Only SAM 3.1 can tell.
+Cutaway = Callable[[float, float], str]
 
 
 def _open_cleanly(start: float, play: float, cuts: list[float], cutaway: Cutaway | None, lo: float) -> float:
@@ -343,23 +409,84 @@ def _open_cleanly(start: float, play: float, cuts: list[float], cutaway: Cutaway
         nxt = next((c for c in cuts if c > start + 0.05), None)
         if nxt is None or nxt > latest:
             break
-        if nxt - start < 1.5:
-            start = nxt  # less than 1.5 s of the shot before: skip it
+        if nxt - start < FLASH_S:
+            start = nxt  # a flash of the shot before: skip it
             continue
         shot_start = max([c for c in cuts if c <= start + 0.05] or [lo])
         if cutaway is not None and cutaway(shot_start, nxt):
             start = nxt  # a crowd, bench or close-up shot without the ball
             continue
         break
+    return _on_its_cut(start, cuts, lo)
+
+
+def _on_its_cut(start: float, cuts: list[float], lo: float) -> float:
+    """A start just after a cut moves back onto the cut itself."""
     before = [c for c in cuts if c <= start + 1e-6]
     if before and 0 < start - before[-1] < 1.0 and before[-1] >= lo:
-        start = before[-1]  # start on the cut itself
+        return before[-1]
     return start
+
+
+def ending_cut(play: float, cuts: list[float], cutaway: Cutaway | None, hi: float,
+               called: float | None = None) -> tuple[float | None, float]:
+    """The broadcast's cut that ends the play (None when the court shot runs on), and
+    when the play was.
+
+    It is the first cut after the play time, unless a shot without the ball (the
+    bench, the crowd) began after the play was called, or just before the play time.
+    Then the play time is a late guess, the call heard over the cutaway after the
+    play: the play came just before that cutaway, and ends where it began. A close-up
+    with the ball in it (the players at the line after a foul) says so only when the
+    call is heard over it or the play time falls in it: one between a free throw
+    announced "at the line" and the free throw itself says nothing. A play called
+    before it happened has no cutaway between its call and its time, so it keeps its
+    time. A play time inside a wipe is late too, with or without SAM: the play ends
+    where the wipe began."""
+    if cutaway is not None:
+        since = play - LATE_PLAY_S if called is None else min(called, play - LATE_PLAY_S)
+        heard = play if called is None else called
+        for i, c in enumerate(cuts):
+            if not since < c <= play + 0.05:
+                continue
+            nxt = cuts[i + 1] if i + 1 < len(cuts) else hi
+            kind = cutaway(c, nxt)
+            if kind and (kind != CLOSE_UP or c <= heard + 0.05 or play < nxt):
+                log.info("play time %.2f is past the %s that began at %.2f: the play ends there", play,
+                         "close-up" if kind == CLOSE_UP else "cutaway", c)
+                return c, min(play, c - 1.0)
+    after = next((c for c in cuts if c > play + 0.05), None)
+    began = max((c for c in cuts if c <= play + 0.05), default=None)
+    if after is not None and began is not None and after - began < TRANSITION_S:
+        log.info("play time %.2f is inside the wipe that began at %.2f: the play ends there", play, began)
+        return began, min(play, began - 1.0)
+    return after, play
+
+
+def _end(m: Moment, play: float, cuts: list[float], sents: list[Sentence], hi: float,
+         cutaway: Cutaway | None) -> tuple[float, bool, float]:
+    """Where the clip ends, whether that is at a cut (an end at a cut never moves later),
+    and when the play was."""
+    cut, play = ending_cut(play, cuts, cutaway, hi, m.called_s)
+    tail = SHORT_TAIL_S if m.category in SHORT_TAIL else TAIL_S
+    about = [s for s in sents if s.end_s > play - 1.0 and s.start_s <= play + tail]
+    later = [s.start_s for s in sents if s.start_s > play + tail]
+    hard_stop = min(hi, min(later) - 0.15) if later else hi
+    said = bool(about)
+    speech_end = min(max(s.end_s for s in about), play + MAX_SPEECH_AFTER_S) if said else play
+    talk_end = min(max(play + 2.0, speech_end + 0.4) if said else play + 3.0, hard_stop)
+    # The cut wins over the talk, even mid-sentence; a cut soon after the talk is still where the play ends.
+    reach = max(talk_end + (1.2 if said else 5.0), play + tail)
+    if cut is not None and cut <= min(reach, hard_stop):
+        return cut - CUT_GUARD_S, True, play
+    # One court shot: the talk decides.
+    return max(talk_end, min(hi, play + 1.0)), False, play
 
 
 def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: float, options: PipelineOptions,
            window: tuple[float, float] | None = None, cutaway: Cutaway | None = None) -> tuple[float, float]:
-    """The clip's final [start, end] in seconds, by the owner's rules."""
+    """The clip's final [start, end] in seconds, by the owner's rules. Raises NoClip when the
+    play time falls in a replay, or the clip can't reach SHORTEST_S without breaking a rule."""
     lo, hi = window or (0.0, duration_s)
     lo, hi = max(0.0, lo), min(duration_s, hi)
     cuts = sorted(c for c in cuts if lo < c < hi)
@@ -367,60 +494,72 @@ def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: f
     if options.mode == "talk":
         return _refine_talk(m, cuts=cuts, sents=sents, lo=lo, hi=hi, options=options)
 
-    # The end.
-    tail = SHORT_TAIL_S if m.category in SHORT_TAIL else TAIL_S
-    about = [s for s in sents if s.end_s > play - 1.0 and s.start_s <= play + tail]
-    later = [s.start_s for s in sents if s.start_s > play + tail]
-    hard_stop = min(hi, min(later) - 0.15) if later else hi
-    said = bool(about)
-    speech_end = min(max(s.end_s for s in about), play + MAX_SPEECH_AFTER_S) if said else play
-    end = min(max(play + 2.0, speech_end + 0.4) if said else play + 3.0, hard_stop)
-    reach = 1.2 if said else 5.0
-    closing = [c for c in cuts if end <= c <= min(end + reach, hard_stop)]
-    if closing:
-        end = closing[0]  # the broadcast cut that ends the play
-    settled = max(play + 1.0, speech_end)
-    padding = [c for c in cuts if settled < c < end]
-    if padding:
-        end = padding[0]  # no end pad past a cut
-    hanging = [c for c in cuts if end - 1.0 < c < end and c > play + 1.0]
-    if hanging:
-        end = hanging[0]  # the next scene must not hang over the end
-    end = max(end, min(hi, play + 1.0))
+    end, at_cut, play = _end(m, play, cuts, sents, hi, cutaway)
+    if _in_replay(play, cuts):
+        raise NoClip("its time falls in a replay, and the live play before it can't be told from the shots "
+                     "around it")
 
-    # The start.
+    # The start, never before a wipe into the play's scene (a replay, or live play after one).
+    earliest = _after_transitions(cuts, play, lo)
     calls = [s for s in sents if s.end_s > play - 0.5 and s.start_s < play + 3.0]
     call = calls[0].start_s if calls else play
     start = min(m.start_s, call - LEAD_BEFORE_CALL_S, play - LEAD_BEFORE_CALL_S)
-    start = max(start, play - MAX_LEAD_S, lo)
+    start = max(start, play - MAX_LEAD_S, earliest)
     if end - start > options.max_clip_s:
         start = end - options.max_clip_s  # the ending matters most: lose lead-up
-    start = _open_cleanly(start, play, cuts, cutaway, lo)
+    start = _open_cleanly(start, play, cuts, cutaway, earliest)
     if end - start < options.min_clip_s:
-        start = _open_cleanly(max(lo, end - options.min_clip_s), play, cuts, cutaway, lo)
-    if end - start < options.min_clip_s:
-        # Still short: a cutaway in the lead-up is better than running past the cut that ends the play.
-        start = _whole_first_shot(max(lo, end - options.min_clip_s), end, cuts, lo, options.max_clip_s)
-    if end - start < options.min_clip_s:
-        # Pinned at the start of the video: grow the end, but never across another cut. A clip
-        # shorter than the minimum is better than a flash of the next scene.
-        nxt = next((c for c in cuts if c > end + 0.05), hi)
-        end = max(end, min(hi, start + options.min_clip_s, nxt))
+        # Short: more lead-up, still opening cleanly. Never more end: a cut that comes early
+        # leaves the clip shorter than the minimum.
+        start = min(start, _open_cleanly(max(earliest, end - options.min_clip_s), play, cuts, cutaway, earliest))
+    shortest = min(SHORTEST_S, options.min_clip_s)
+    if end - start < shortest:
+        # Still under 6 s: a cutaway in the lead-up is better than running past the cut that ends the
+        # play, or than a clip too short to watch.
+        start = _reach_back(start, max(earliest, end - shortest), cuts, earliest)
+    if end - start < options.min_clip_s and not at_cut:
+        # One court shot, pinned at the start of the video: the end may grow, but not into the next shot.
+        nxt = next((c for c in cuts if c > end + 0.05), None)
+        end = max(end, min(hi if nxt is None else nxt - CUT_GUARD_S, start + options.min_clip_s))
     if end - start > options.max_clip_s:
         end = start + options.max_clip_s
+    if end - start < shortest - 0.01:
+        before = "a wipe" if earliest > lo else "the start of the video"
+        raise NoClip(f"it would be {end - start:.1f} s long, under {shortest:.0f} s, between {before} just before "
+                     f"it and the broadcast's cut {max(0.0, end - play):.1f} s after it")
     return round(start, 2), round(end, 2)
 
 
-def _whole_first_shot(start: float, end: float, cuts: list[float], lo: float, longest: float) -> float:
-    """`start`, moved back to the start of its shot when it would open on a
-    flash of that shot (under 1.5 s before the next cut) or just after its cut,
-    as long as the clip stays within `longest`."""
-    shot_start = max([c for c in cuts if c <= start + 1e-6] or [lo])
-    nxt = next((c for c in cuts if c > start + 0.05), None)
-    flash = nxt is not None and nxt - start < 1.5
-    if (flash or 0 < start - shot_start < 1.0) and end - shot_start <= longest:
-        return shot_start
-    return start
+def _in_replay(play: float, cuts: list[float]) -> bool:
+    """Whether the play time falls in a replay: a stretch under REPLAY_S between the wipe into
+    it and the wipe out of it (two cuts under TRANSITION_S apart are a wipe)."""
+    wipes = [(a, b) for a, b in zip(cuts, cuts[1:], strict=False) if b - a < TRANSITION_S]
+    into = [b for a, b in wipes if b <= play + 0.05]
+    out = [a for a, b in wipes if a > play + 0.05]
+    return bool(into and out) and min(out) - max(into) <= REPLAY_S
+
+
+def _after_transitions(cuts: list[float], play: float, lo: float) -> float:
+    """The earliest a clip may start: after the last transition before the play. Two
+    cuts this close together are a wipe (into a replay or out of one), not a scene, so
+    a clip never spans the live game and a replay."""
+    earliest = lo
+    for a, b in zip(cuts, cuts[1:], strict=False):
+        if b - a < TRANSITION_S and b <= play:
+            earliest = max(earliest, b)
+    return earliest
+
+
+def _reach_back(start: float, want: float, cuts: list[float], lo: float) -> float:
+    """An earlier start, at `want`, for a clip too short even with all its clean lead-up.
+    It opens on the shot before after all, but on at least FLASH_S of it, never a flash."""
+    if want >= start:
+        return start
+    nxt = next((c for c in cuts if want + 0.05 < c <= start + 1e-6), None)
+    if nxt is not None and nxt - want < FLASH_S:
+        shot_start = max([c for c in cuts if c <= want + 1e-6] or [lo])
+        want = max(shot_start, nxt - FLASH_S)
+    return min(start, _on_its_cut(want, cuts, lo))
 
 
 def _refine_talk(m: Moment, *, cuts: list[float], sents: list[Sentence], lo: float, hi: float,

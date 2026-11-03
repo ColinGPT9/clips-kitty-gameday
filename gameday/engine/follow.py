@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from gameday.engine import ff, moments, tracking
+from gameday.engine import ff, moments, shots, tracking
 from gameday.media import MediaError
 from gameday.meta_api.video import VideoFacts, video_facts
 from gameday.types import Follow, MetaAPI, MetaError, PipelineOptions, Segmentation
@@ -20,7 +20,10 @@ PART_BYTES = 5_500_000  # a proxy bigger than this goes to SAM in parts
 PART_S = 20.0
 NEEDS_PLAYERS = 0.6  # below this ball coverage, SAM is also asked for the players
 CUTAWAY_SHARE = 0.15  # a shot with the ball in fewer of its frames is a cutaway
-CUT_THRESHOLD = 0.35
+# So is one where the ball is usually this wide (a share of the frame's width): a close-up of the players. In the
+# HD demo game the ball was 1 to 3% of the width from the wide camera, 4.5% from the one under the basket and in
+# replays, and 6 to 13% in close-ups of the players.
+CLOSE_UP_BALL = 0.06
 # Where the ball is missing, the window follows the players. "basketball player" finds the players on the
 # court and not the crowd ("person" found both, and took six times as long); 3 frames a second is plenty.
 PLAYERS_NOUN = "basketball player"
@@ -44,6 +47,7 @@ class ClipWork:
     warnings: list[str] = field(default_factory=list)
     fallbacks: list[str] = field(default_factory=list)
     sam_frames: int = 0  # frames sent to SAM 3.1 for this clip
+    left_out: str = ""  # why the rules made no clip of this moment (moments.NoClip), if they didn't
 
     def to_proxy(self, t: float) -> float:
         return t - self.window[0]
@@ -53,6 +57,35 @@ def proxy_window(m: moments.Moment, duration_s: float, options: PipelineOptions)
     """The stretch of video worth showing SAM: the rough clip with room for the rules to move its ends."""
     start, end = moments.rough_range(m, duration_s, options)
     return round(max(0.0, start - 6.0), 3), round(min(duration_s, end + 7.0), 3)
+
+
+def cutaways(track: tracking.Track, fps: float, window_start: float) -> moments.Cutaway:
+    """What kind of cutaway a shot (source seconds) is, by SAM's ball: missing from most of its frames
+    (the crowd, the bench), or big in them (a close-up of the players, even with the ball in hand)."""
+    def cutaway(a: float, b: float) -> str:
+        share = tracking.ball_share(track, fps, a - window_start, b - window_start)
+        if share is not None and share < CUTAWAY_SHARE:
+            return moments.NO_BALL
+        size = tracking.ball_size(track, fps, a - window_start, b - window_start)
+        return moments.CLOSE_UP if size is not None and size >= CLOSE_UP_BALL else ""
+
+    return cutaway
+
+
+def _shots(work: ClipWork, track: tracking.Track | None, fps: float) -> str:
+    """Every shot of the window by its first frame (the window's start, then each cut), with SAM's ball
+    share and the ball's usual width in it, for the log: enough to replay the rules offline."""
+    ws, we = work.window
+    edges = [ws, *(c for c in work.cuts if ws < c < we), we]
+    parts = []
+    for a, b in zip(edges, edges[1:], strict=False):
+        about = []
+        if track is not None:
+            share = tracking.ball_share(track, fps, a - ws, b - ws)
+            size = tracking.ball_size(track, fps, a - ws, b - ws)
+            about = ([] if share is None else [f"ball {share:.0%}"]) + ([] if size is None else [f"{size:.1%} wide"])
+        parts.append(f"{a:.2f}" + (f" ({', '.join(about)})" if about else ""))
+    return ", ".join(parts)
 
 
 def segment(meta: MetaAPI, proxy: Path, facts: VideoFacts, noun: str, *, job_id: int | None,
@@ -105,12 +138,17 @@ def track_clip(work: ClipWork, *, source: Path, source_size: tuple[int, int], du
         work.proxy = ff.make_proxy(source, tmp / f"clip_{work.rank:02d}_proxy.mp4", start=ws, seconds=we - ws,
                                    fps=options.sam_fps)
         work.facts = video_facts(work.proxy)
-        work.cuts = [round(ws + c, 3) for c in ff.scene_cuts(work.proxy, threshold=CUT_THRESHOLD)]
     except MediaError as exc:
         log.warning("proxy for %s failed: %s", name, exc)
         work.proxy, work.facts = None, None
         work.warnings.append(f"Couldn't prepare {name} for SAM 3.1, so it is centre-cropped.")
         work.fallbacks.append(f"centre_crop:{work.rank}")
+    # The broadcast's cuts come from the game itself, every frame of the span (not SAM's proxy).
+    try:
+        work.cuts = shots.scan(source, ws, we)
+    except MediaError as exc:
+        log.warning("finding the cuts around %s failed: %s", name, exc)
+        work.warnings.append(f"Couldn't find the camera cuts around {name}, so it ends on the commentary alone.")
 
     talk = options.mode == "talk"
     if work.proxy is not None and work.facts is not None and meta is not None and not should_stop():
@@ -139,18 +177,22 @@ def track_clip(work: ClipWork, *, source: Path, source_size: tuple[int, int], du
 
     # Where the clip starts and ends.
     cutaway = None
-    if work.ball is not None and work.facts is not None:
-        ball = tracking.pick_ball(work.ball)
-        overall = float(ball.found.mean()) if len(ball.found) else 0.0
-        if overall >= 0.2:  # SAM sees the ball in this footage, so a shot without it means something
-            fps = work.facts.fps or options.sam_fps
-
-            def cutaway(a: float, b: float) -> bool:
-                share = tracking.ball_share(ball, fps, a - ws, b - ws)
-                return share is not None and share < CUTAWAY_SHARE
-
-    work.start_s, work.end_s = moments.refine(work.moment, cuts=work.cuts, sents=sents, duration_s=duration_s,
-                                              options=options, window=(ws, we), cutaway=cutaway)
+    track = tracking.pick_ball(work.ball) if work.ball is not None and work.facts is not None else None
+    fps = (work.facts.fps if work.facts is not None else 0.0) or options.sam_fps
+    if track is not None and len(track.found) and float(track.found.mean()) >= 0.2:
+        # SAM sees the ball in this footage, so a shot without it, or with it close up, means something.
+        cutaway = cutaways(track, fps, ws)
+    try:
+        work.start_s, work.end_s = moments.refine(work.moment, cuts=work.cuts, sents=sents, duration_s=duration_s,
+                                                  options=options, window=(ws, we), cutaway=cutaway)
+    except moments.NoClip as exc:
+        work.left_out = str(exc)
+        log.info("%s: play at %.2f, no clip: %s; shots from %s", name, work.moment.play_s, exc,
+                 _shots(work, track, fps))
+        return work
+    at_cut = any(abs(c - moments.CUT_GUARD_S - work.end_s) < 0.011 for c in work.cuts)
+    log.info("%s: play at %.2f, clip %.2f-%.2f %s; shots from %s", name, work.moment.play_s, work.start_s,
+             work.end_s, "ending at a cut" if at_cut else "ending on the talk", _shots(work, track, fps))
 
     # The window's path.
     if work.facts is None:

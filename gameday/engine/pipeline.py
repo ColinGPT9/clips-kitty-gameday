@@ -192,8 +192,13 @@ class _Run:
                     max_tokens=SPARK_MAX_TOKENS, temperature=0.2)
                 found = moments.parse_moments(answer, duration_s=info.duration_s, mode=options.mode,
                                               known_text=moments.known_words(turns, options.hint))
+                said = [m.play_s for m in found]
                 if options.mode != "talk":
                     moments.snap_to_loudness(found, loud)
+                    moments.note_the_calls(found, turns)
+                for m, guess in zip(found, said, strict=True):
+                    log.info("moment: play at %.2f (Muse Spark said %.2f), called at %s, lead-up from %.2f: %s",
+                             m.play_s, guess, m.called_s, m.start_s, m.evidence[:80])
                 picks = moments.drop_overlaps(found, options.max_clips, info.duration_s, options)
                 if not picks:
                     self.warn("Muse Spark found no plays, so the clips were picked on crowd noise.", "spark_empty")
@@ -243,7 +248,10 @@ class _Run:
             for name in work.fallbacks:
                 if name not in self.fallbacks:
                     self.fallbacks.append(name)
-        works = self.separate(works)
+            if work.left_out:
+                minutes, seconds = divmod(int(work.moment.play_s), 60)
+                self.warn(f"No clip of the play at {minutes}:{seconds:02d}: {work.left_out}.")
+        works = self.separate([work for work in works if not work.left_out])
         self.timed("sam", started)
         return works
 

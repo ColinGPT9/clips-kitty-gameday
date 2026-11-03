@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gameday.engine import tracking
+from gameday.engine import follow, moments, tracking
 from gameday.types import Box, Segmentation
 
 W, H, FPS = 640, 360, 10.0
@@ -152,3 +152,20 @@ def test_a_clip_inside_the_proxy_uses_its_own_frames():
 def test_window_share_and_portrait_video():
     assert tracking.window_share(1920, 1080) == pytest.approx(1080 * 9 / 16 / 1920)
     assert tracking.window_share(1080, 1920) == 1.0
+
+
+def test_a_shot_without_the_ball_or_with_it_up_close_is_a_cutaway():
+    # 3 s from the wide camera (a 10 px ball in a 640 px frame), 3 s without the ball (the bench), then 3 s
+    # of the players up close at the free-throw line, the ball in hand (56 px, 9% of the width).
+    xs = [200 + 3 * k for k in range(30)] + [None] * 30 + [280 + (k % 5) * 6 for k in range(30)]
+    wide = ball_seg(xs, size=10)
+    close = ball_seg([None] * 60 + xs[60:], size=56)
+    seg = Segmentation(noun="basketball", width=W, height=H, frames=90, fps=FPS,
+                       boxes=sorted([b for b in wide.boxes if b.frame < 30] + close.boxes,
+                                    key=lambda b: (b.frame, b.object_id)))
+    track = tracking.pick_ball(seg)
+    assert tracking.ball_size(track, FPS, 0.0, 3.0) == pytest.approx(10 / W)
+    assert tracking.ball_size(track, FPS, 3.0, 6.0) is None  # not seen there
+    assert tracking.ball_size(track, FPS, 6.0, 9.0) == pytest.approx(56 / W)
+    kind = follow.cutaways(track, FPS, window_start=100.0)  # the window starts 100 s into the game
+    assert (kind(100.0, 103.0), kind(103.0, 106.0), kind(106.0, 109.0)) == ("", moments.NO_BALL, moments.CLOSE_UP)
