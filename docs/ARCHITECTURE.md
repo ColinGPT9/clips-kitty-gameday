@@ -94,6 +94,12 @@ Muse Spark, SAM 3.1, 9:16 and Captions.
    play (to a close-up, the bench, a replay wipe), and never opens on a
    cutaway. The cuts are found in the game itself, every frame of the
    stretch around each clip, by plain pixel and colour statistics: no model.
+   Which shots are cutaways SAM 3.1's boxes tell: the ball missing from
+   most of a shot (the bench, the crowd), or big in it (the players up
+   close). Without SAM (no key, or a failed call) only the cuts are known,
+   so a clip may open or end on a close-up. A play whose time falls in a
+   replay, or that can't make 6 seconds between a wipe and the cut after
+   it, makes no clip, and the job's warnings say so.
 6. **Captions.** Muse Spark writes each clip's caption for posting.
 7. **The offer.** With **Let me approve publishing from my phone** on, the
    app sends the offer to the relay, signed. The relay keeps it for Muse.
