@@ -85,7 +85,9 @@ On the first start, read the owner password from `owner-password.txt` in the
 volume, then sign in at `https://<your host>/` as `owner`.
 
 Disk: plan for every uploaded game plus its clips. How much a game takes:
-TODO(measured). CPU and memory for a full game: TODO(measured).
+a 22.5-minute game was a 138 MB upload and made 173 MB of clips (8 clips,
+measured 3 Nov 2026). CPU and memory for a full game on the VM:
+TODO(measured).
 
 ## Getting games in
 

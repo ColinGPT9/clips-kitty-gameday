@@ -80,9 +80,19 @@ More in [SECURITY.md](SECURITY.md).
 
 ## What has run
 
-- This web app on a real game: TODO(measured) (game length, clips, time per
-  stage, cost per model, ball coverage). See [TEST_LOG.md](TEST_LOG.md).
-- Tests: TODO(measured) (Python and relay counts, from CI).
+- **This web app on a real game (3 Nov 2026):** a 22.5-minute game made 8
+  vertical clips in 227 s on a desktop PC.
+  - Cost: about $0.65 of Meta usage, about 8 cents a clip. Muse Voice
+    $0.07, Muse Spark $0.02, SAM 3.1 $0.56.
+  - Ball-following: in the 7 clips of live play, SAM 3.1 kept the 9:16
+    window on the ball 72-89% of the time. The 8th clip, the celebration
+    after the buzzer, followed the players.
+  - Details in [TEST_LOG.md](TEST_LOG.md).
+- **Cost to post:** Instagram and Facebook Reels go through Meta's Graph
+  API at no charge. Muse Spark's captions for a one-clip offer cost
+  $0.004.
+- **Tests:** 415 Python tests (on Ubuntu and Windows) and 105 relay tests
+  pass in CI, along with the provenance check, at commit b23ae37.
 - On the event branch, on 1 Nov 2026, the relay and the phone's approval
   page ran live: one clip was approved on a phone with the PIN and posted
   through Meta's APIs as an Instagram Reel and a Facebook Page Reel.

@@ -125,7 +125,13 @@ shows the running total against your budget.
 
 - `META_BUDGET_USD` (default $25): once estimated spending passes it, Meta
   calls are refused.
-- A full game: TODO(measured).
+- **Measured on a real game (3 Nov 2026):** a 22.5-minute game made 8
+  vertical clips for about **$0.65** of Meta usage, about **8 cents a
+  clip**: Muse Voice $0.07, Muse Spark $0.02 and SAM 3.1 $0.56. It took
+  under 4 minutes on a desktop PC. See [docs/TEST_LOG.md](docs/TEST_LOG.md).
+- **Posting adds almost nothing.** Reels go to Instagram and Facebook
+  through Meta's Graph API, which charges no fee. Muse Spark's captions
+  for an offer cost under a cent: $0.004 for a one-clip offer, measured.
 - WhatsApp, if you use it: about $0.0034 per delivered message template in
   North America at the time of writing. Replies within 24 hours of your last
   message are free. The relay fits in Cloudflare's free plan for one owner.
