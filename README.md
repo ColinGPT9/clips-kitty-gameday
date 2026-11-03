@@ -122,11 +122,17 @@ Step by step for Windows, macOS and Linux:
 
 ## Hosting
 
-It runs as one process with one data folder, behind HTTPS.
+It runs as one process with one data folder, behind HTTPS. On a fresh Ubuntu
+24.04 server it takes one command:
+`sudo bash scripts/setup-lightsail.sh <your-ip-with-dashes>.sslip.io`.
 
-- [docs/RUNNING.md](docs/RUNNING.md): what a container needs (packages,
-  environment, port, the volume to keep, uploads, network).
-- [docs/AWS_SETUP.md](docs/AWS_SETUP.md): putting it on AWS.
+- [docs/AWS_SETUP.md](docs/AWS_SETUP.md): AWS Lightsail, step by step.
+- [docs/RUNNING.md](docs/RUNNING.md): what any host needs (packages,
+  environment, port, the data to keep, uploads, network).
+
+AWS (the server) and Cloudflare (the relay) only run this project's own code.
+Neither provides any AI here: no AWS or Cloudflare AI service is called. The
+only models are the three Meta models above.
 
 ## Phone approval
 

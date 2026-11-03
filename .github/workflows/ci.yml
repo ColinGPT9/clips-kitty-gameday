@@ -36,6 +36,24 @@ jobs:
       - name: Tests
         run: pytest -q
 
+  lightsail:
+    name: Lightsail setup script (Ubuntu 24.04, Python 3.12)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the setup script as on a fresh server
+        run: sudo bash scripts/setup-lightsail.sh localhost
+      - name: The app answers, directly and through Caddy, and asks for the password
+        run: |
+          curl -fsS http://127.0.0.1:8080/health
+          curl -fsSk https://localhost/health
+          test "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/api/status)" = 401
+      - name: The tests on the server's Python
+        run: |
+          .venv/bin/pip install -q -r requirements-dev.txt
+          .venv/bin/python -m pytest -q
+
   relay:
     name: Relay (Node 22)
     runs-on: ubuntu-latest
