@@ -314,7 +314,7 @@ def test_an_upload_is_streamed_in_and_queued_with_the_current_settings(gd):
     assert job["state"] == "queued" and job["video"] == {"id": got["video_id"], "name": "Game Night.mp4",
                                                           "duration_s": 1800.0, "source": "upload"}
     assert json.loads(gd.store.get_job(got["job_id"])["options"]) == {
-        "mode": "basketball", "max_clips": 4, "hint": "Blue and Gold", "title_cards": True}
+        "mode": "basketball", "max_clips": 4, "hint": "Blue and Gold", "title_cards": True, "caption_credit": ""}
 
 
 def test_an_upload_over_the_limit_is_refused_and_nothing_is_kept(gd):
@@ -397,15 +397,42 @@ def test_a_real_ffprobe_refuses_random_bytes(make_app):
 
 
 def test_settings_are_checked_and_kept(gd):
-    assert gd.get("/api/settings").json() == {"mode": "basketball", "max_clips": 8, "hint": "", "title_cards": True}
+    assert gd.get("/api/settings").json() == {"mode": "basketball", "max_clips": 8, "hint": "", "title_cards": True,
+                                              "caption_credit": ""}
     r = gd.patch("/api/settings", json={"mode": "talk", "max_clips": 12, "title_cards": False})
-    assert r.json() == {"mode": "talk", "max_clips": 12, "hint": "", "title_cards": False}
+    assert r.json() == {"mode": "talk", "max_clips": 12, "hint": "", "title_cards": False, "caption_credit": ""}
     for bad in ({"mode": "soccer"}, {"max_clips": 0}, {"max_clips": 13}, {"max_clips": "3"}, {"max_clips": True},
                 {"hint": "x" * 201}, {"title_cards": "yes"}, {"colour": "red"}):
         r = gd.patch("/api/settings", json=bad)
         assert r.status_code == 400, bad
         assert r.json()["error"]
     assert gd.get("/api/settings").json()["mode"] == "talk"
+
+
+DVIDS = ("Game footage: DVIDS (public domain). The appearance of U.S. Department of War (DoW) visual "
+         "information does not imply or constitute DoW endorsement.")
+
+
+def test_the_credit_line_is_trimmed_checked_and_kept_for_the_next_game(gd):
+    r = gd.patch("/api/settings", json={"caption_credit": f"  {DVIDS}  \n"})
+    assert r.status_code == 200 and r.json()["caption_credit"] == DVIDS
+    # Line breaks are allowed, made plain, and each line trimmed: three lines at most.
+    r = gd.patch("/api/settings", json={"caption_credit": " Footage: DVIDS. \r\n\tPublic domain.\r\n"})
+    assert r.json()["caption_credit"] == "Footage: DVIDS.\nPublic domain."
+    assert gd.patch("/api/settings", json={"caption_credit": "x" * 300}).status_code == 200
+    assert gd.patch("/api/settings", json={"caption_credit": "One\n\nThree"}).status_code == 200
+    for bad, words in (("x" * 301, "at most 300 characters"), ("1\n2\n3\n4", "at most 3 lines"),
+                       (5, "must be text"), (None, "must be text"), (["Footage"], "must be text")):
+        r = gd.patch("/api/settings", json={"caption_credit": bad})
+        assert r.status_code == 400, bad
+        error = r.json()["error"]
+        assert words in error and error.startswith("The credit line") and error.endswith("."), error
+    assert gd.get("/api/settings").json()["caption_credit"] == "One\n\nThree"  # a refusal changes nothing
+    gd.patch("/api/settings", json={"caption_credit": DVIDS})
+    r = gd.post("/api/upload?filename=game.mp4", content=VIDEO_BYTES + os.urandom(1000),
+                headers={"Content-Type": "application/octet-stream"})
+    assert json.loads(gd.store.get_job(r.json()["job_id"])["options"])["caption_credit"] == DVIDS
+    assert gd.patch("/api/settings", json={"caption_credit": "   "}).json()["caption_credit"] == ""
 
 
 def test_the_meta_key_is_kept_encrypted_and_never_sent_back(gd):

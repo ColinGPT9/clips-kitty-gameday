@@ -17,6 +17,7 @@ from platform_fakes import SECRET, FakeMeta, FakeRelay, finished_job, sign_comma
 from gameday.remote_approval import captions, commands, notifier, service, states, store, summary, usage
 from gameday.remote_approval import settings as ra_settings
 from gameday.remote_approval.relay import RelayError
+from gameday.types import MetaError
 
 
 @pytest.fixture
@@ -353,6 +354,125 @@ def test_hashtags_muse_spark_puts_in_the_caption_are_posted_once(db, on):
     assert text["instagram"] == "Poster dunk from tonight.\n\n#hoops #game #day #basketball #clutch"
     assert text["facebook"] == "What a #clutch finish.\n\n#hoops #game #day #basketball"
     assert "no hashtags" in captions.INSTRUCTIONS
+
+
+# ---- the credit line ----------------------------------------------------------------------
+
+
+CREDIT = ("Game footage: DVIDS (public domain). The appearance of U.S. Department of War (DoW) visual "
+          "information does not imply or constitute DoW endorsement.")
+
+
+def test_the_clips_own_captions_end_with_the_credit_line_and_the_offer_carries_them(db, on):
+    db.save_job_settings({"caption_credit": CREDIT})
+    review, relay = offered(db, on)  # no Meta key: the clips' own text
+    entry = review["clips"][0]
+    made = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
+    body = "Poster dunk in the third\n\nPoster dunk\n\n#basketball #highlights"
+    assert made["source"] == "clip"
+    assert made["instagram"] == made["facebook"] == f"{body}\n\n{CREDIT}"
+    assert CREDIT not in made["title"]
+    # The offer's message holds every clip's final text, credit line and all:
+    # the approval page shows exactly what is posted.
+    sent = relay.notified[0]["clips"]
+    assert len(sent) == len(review["clips"]) == 5
+    for clip, entry in zip(sent, review["clips"], strict=True):
+        final = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
+        assert clip["texts"] == {"instagram": final["instagram"], "facebook": final["facebook"]}
+        assert all(text.endswith(f"#highlights\n\n{CREDIT}") for text in clip["texts"].values())
+
+
+def test_muse_sparks_captions_end_with_the_credit_line_and_spark_is_never_shown_it(db, on):
+    meta = FakeMeta(db.ledger())
+    job = finished_job(db, on, hint="Blue and Gold", credit=CREDIT)
+    review = store.get_review(db, notifier.on_job_finished(db, job, "done", meta=meta))
+    [(_, purpose, _, messages)] = meta.calls
+    assert purpose == "captions"
+    told = " ".join(m["content"] for m in messages)
+    assert "DVIDS" not in told and "endorsement" not in told  # never asked to write or reword it
+    entry = review["clips"][0]
+    text = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
+    assert text["source"] == "muse_spark" and text["title"] == "Muse: Poster dunk"
+    assert text["instagram"] == f"Poster dunk from tonight.\n\n#hoops #game #day #basketball\n\n{CREDIT}"
+    assert text["facebook"] == f"Watch the poster dunk.\n\n#hoops #game #day #basketball\n\n{CREDIT}"
+
+
+def test_when_muse_spark_fails_the_clips_own_captions_still_end_with_the_credit_line(db, on):
+    meta = FakeMeta(db.ledger(), fail=MetaError("Muse Spark is not answering.", model="muse-spark-1.3"))
+    review = store.get_review(db, notifier.on_job_finished(db, finished_job(db, on, credit=CREDIT), "done",
+                                                           meta=meta))
+    assert meta.calls and not review["captions"]  # asked, and it failed
+    relay = FakeRelay()
+    service.flush_outbox(db, relay)
+    for clip in relay.notified[0]["clips"]:
+        assert clip["text_source"] == "clip"
+        assert clip["texts"]["instagram"] == clip["texts"]["facebook"]
+        assert clip["texts"]["instagram"].endswith(f"#basketball #highlights\n\n{CREDIT}")
+
+
+def test_a_caption_too_long_for_its_platform_loses_words_never_the_credit_line():
+    credit = "\n".join(("a" * 99, "b" * 99, "c" * 100))  # the most a credit line can be
+    words = " ".join(["highlight"] * 200)[:1800]  # the longest caption Muse Spark's answer keeps
+    review = {"fingerprint": "f", "summary": {"kind": "basketball", "credit": credit},
+              "captions": {"fingerprint": "f", "clips": {"1": {
+                  "title": "Dunk", "instagram": words, "facebook": words,
+                  "hashtags": ["#" + "h" * 60, "#" + "k" * 60]}}}}
+    text = captions.texts_for(review, None, {"clip_id": 1, "title": "Dunk"})
+    for platform, limit in (("instagram", 2200), ("facebook", 2000)):
+        caption = text[platform]
+        assert captions.units(caption) <= limit, platform
+        assert caption.endswith(f"\n\n{credit}"), platform
+        body = caption[:-len(credit) - 2]
+        assert body.endswith("…") and not body.endswith(" …"), body[-20:]
+        assert words.startswith(body[:200])
+    assert text["facebook"].endswith(f"highlight…\n\n{credit}")  # cut at the end of a word
+    # Counted as the relay and Meta count: an emoji is two units, and is never split.
+    review["captions"]["clips"]["1"]["instagram"] = "\U0001f3c0" * 1500
+    caption = captions.texts_for(review, None, {"clip_id": 1, "title": "Dunk"})["instagram"]
+    assert captions.units(caption) <= 2200 and caption.endswith(f"\U0001f3c0…\n\n{credit}")
+    # Short enough: nothing is cut, and no credit line adds nothing.
+    assert captions.fit("A dunk.\n\n#hoops", credit, 2200) == f"A dunk.\n\n#hoops\n\n{credit}"
+    assert captions.fit("A dunk.\n\n#hoops", "", 2200) == "A dunk.\n\n#hoops"
+    assert captions.fit("", credit, 2200) == credit
+
+
+def test_a_game_keeps_its_own_credit_line_and_an_offer_the_one_it_was_made_with(db, on):
+    db.save_job_settings({"caption_credit": "Another game's notice."})
+    job = finished_job(db, on, credit=CREDIT)  # queued with this footage's line
+    review_id = notifier.on_job_finished(db, job, "done")
+    assert captions.credit_of(store.get_review(db, review_id)) == CREDIT
+    relay = FakeRelay()
+    service.flush_outbox(db, relay)
+    # Changed once the offer is out: its page and its posts keep the line it went out with.
+    db.save_job_settings({"caption_credit": ""})
+    review = store.get_review(db, review_id)
+    entry = review["clips"][0]
+    posted = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
+    assert relay.notified[0]["clips"][0]["texts"] == {"instagram": posted["instagram"], "facebook": posted["facebook"]}
+    assert posted["instagram"].endswith(f"\n\n{CREDIT}")
+    # Asked again, it is still the game's own line; and once its job is gone, the offer's.
+    store.move(db, review_id, states.EXPIRED, actor="test")
+    again = store.get_review(db, service.ask_again(db, review_id))
+    assert captions.credit_of(again) == CREDIT
+    store.move(db, again["id"], states.CANCELLED, actor="test")
+    db.conn.execute("DELETE FROM jobs WHERE id = ?", (job["id"],))
+    db.conn.commit()
+    assert captions.credit_of(store.get_review(db, service.ask_again(db, again["id"]))) == CREDIT
+
+
+def test_a_game_queued_without_a_credit_line_takes_the_one_set_while_it_ran(db, on):
+    job = finished_job(db, on, credit="")
+    db.save_job_settings({"caption_credit": CREDIT})
+    assert captions.credit_of(store.get_review(db, notifier.on_job_finished(db, job, "done"))) == CREDIT
+    older = finished_job(db, on, title="Blue vs Red")  # queued before the setting existed
+    assert "caption_credit" not in json.loads(older["options"])
+    assert captions.credit_of(store.get_review(db, notifier.on_job_finished(db, older, "done"))) == CREDIT
+    # No line anywhere: nothing is added.
+    db.save_job_settings({"caption_credit": ""})
+    review = store.get_review(db, notifier.on_job_finished(db, finished_job(db, on, title="Blue vs Green",
+                                                                            credit=""), "done"))
+    assert "credit" not in review["summary"]
+    assert captions.texts_for(review, None, review["clips"][0])["instagram"].endswith("#basketball #highlights")
 
 
 def test_an_answer_naming_clips_it_was_not_given_is_cleaned():

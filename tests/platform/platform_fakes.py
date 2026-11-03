@@ -83,10 +83,15 @@ def add_clips(db, data_dir: Path, job_id: int, video_id: int, plays=PLAYS) -> li
     return ids
 
 
-def finished_job(db, data_dir, *, plays=PLAYS, mode="basketball", title=TITLE, video_id=None, hint=""):
-    """A job that finished, its video, and one rendered clip per play."""
+def finished_job(db, data_dir, *, plays=PLAYS, mode="basketball", title=TITLE, video_id=None, hint="", credit=None):
+    """A job that finished, its video, and one rendered clip per play.
+    `credit` is the credit line it was queued with; None makes a job from
+    before that setting, whose options have none at all."""
     video_id = video_id or add_video(db, data_dir, title)
-    job_id = db.add_job(video_id, {"mode": mode, "max_clips": 8, "hint": hint, "title_cards": True})
+    options = {"mode": mode, "max_clips": 8, "hint": hint, "title_cards": True}
+    if credit is not None:
+        options["caption_credit"] = credit
+    job_id = db.add_job(video_id, options)
     db.update_job(job_id, state="running", started_at=time.time())
     add_clips(db, data_dir, job_id, video_id, plays)
     db.update_job(job_id, state="done", finished_at=time.time(), clips=len(plays))

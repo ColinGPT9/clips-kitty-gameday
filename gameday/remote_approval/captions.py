@@ -19,11 +19,20 @@ already has (its title and label), so publishing never waits on a model.
 
 Only a basketball offer is written as basketball and tagged #basketball; any
 other video is written in plain words with nothing added.
+
+The owner's credit line (Options, store.DEFAULT_SETTINGS "caption_credit"),
+the notice footage they don't own may ask to go with it, ends every Instagram
+and Facebook caption: after the hashtags, past a blank line. It is added here,
+after Muse Spark, which is never shown it, so it can't be reworded. Each offer
+keeps the credit line it was made with (notifier.offer), so the approval page
+and the post always say the same. A caption too long for its platform loses
+words from its body, never from the credit line.
 """
 
 import json
 import re
 
+from gameday.publish.meta_graph import FB_DESCRIPTION_MAX, IG_CAPTION_MAX
 from gameday.remote_approval import store
 from gameday.types import MODEL_SPARK
 
@@ -234,6 +243,49 @@ def with_tags(text: str, tags: list[str], *, limit: int = 8) -> str:
 # ---- the text each platform gets ------------------------------------------------------
 
 
+#: The most each platform's caption may hold, counted as units(): Instagram's
+#: caption limit, and the Facebook description this app and the relay send.
+LIMITS = {"instagram": IG_CAPTION_MAX, "facebook": FB_DESCRIPTION_MAX}
+
+
+def credit_of(review: dict) -> str:
+    """The credit line this offer's captions end with, "" for none: the one
+    it was made with (notifier.offer), never the setting as it is now."""
+    return str((review.get("summary") or {}).get("credit") or "").strip()
+
+
+def units(text: str) -> int:
+    """A text's length the way the relay (JavaScript) and Meta count it:
+    UTF-16 code units, so an emoji counts two."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _start(text: str, room: int) -> str:
+    """The longest start of `text` at most `room` units long."""
+    used = 0
+    for i, ch in enumerate(text):
+        used += 2 if ord(ch) > 0xFFFF else 1
+        if used > room:
+            return text[:i]
+    return text
+
+
+def fit(body: str, credit: str, limit: int) -> str:
+    """One platform's caption as it is posted: `body`, then a blank line and
+    `credit`, in at most `limit` units. Too long, the body is cut at the end
+    of a word and given an ellipsis; the credit line is never cut."""
+    body = str(body or "").strip()
+    room = limit - (units(credit) + 2 if credit else 0)
+    if units(body) > room:
+        cut = _start(body, max(0, room - 1))
+        end = max(cut.rfind(" "), cut.rfind("\n"))
+        if end > len(cut) // 2:  # a word's end, unless that throws away half
+            cut = cut[:end]
+        cut = cut.rstrip()
+        body = f"{cut}…" if cut else ""
+    return "\n\n".join(p for p in (body, credit) if p)
+
+
 def wording(kind: str) -> tuple[str, list[str]]:
     """The title a clip with none of its own gets, and the hashtags an offer
     of this kind adds. Only a basketball offer says basketball."""
@@ -245,19 +297,22 @@ def wording(kind: str) -> tuple[str, list[str]]:
 def texts_for(review: dict, clip_row, entry: dict) -> dict:
     """{"title", "instagram", "facebook", "source"} for one clip: Muse
     Spark's when there is some for these exact clips, otherwise the clip's
-    own title and label."""
+    own title and label. Each caption ends with the offer's credit line and
+    fits its platform (fit). The offer's message (service.build_body) and the
+    upload (publishing.run) both take their text from here."""
     made = (review.get("captions") or {})
     mine = (made.get("clips") or {}).get(str(entry["clip_id"])) \
         if made.get("fingerprint") == review["fingerprint"] else None
     kind = offer_kind(review)
     fallback, added = wording(kind)
+    credit = credit_of(review)
     if mine:
         tags = hashtags([*mine["hashtags"], *added], limit=8)
         title = mine["title"] or entry.get("title") or entry.get("label") or fallback
         return {
             "title": title,
-            "instagram": with_tags(mine["instagram"], tags),
-            "facebook": with_tags(mine["facebook"], tags),
+            "instagram": fit(with_tags(mine["instagram"], tags), credit, LIMITS["instagram"]),
+            "facebook": fit(with_tags(mine["facebook"], tags), credit, LIMITS["facebook"]),
             "source": "muse_spark",
         }
     label = str(entry.get("label") or "").strip()
@@ -269,7 +324,7 @@ def texts_for(review: dict, clip_row, entry: dict) -> dict:
     body = "\n\n".join(p for p in (title, description, " ".join(tags)) if p)
     return {
         "title": title[:100],
-        "instagram": body,
-        "facebook": body,
+        "instagram": fit(body, credit, LIMITS["instagram"]),
+        "facebook": fit(body, credit, LIMITS["facebook"]),
         "source": "clip",
     }

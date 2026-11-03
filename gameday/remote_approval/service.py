@@ -527,7 +527,7 @@ def send_test(db) -> bool:
 def ask_again(db, review_id: int, *, meta=None) -> int | None:
     """A new offer for an expired or cancelled one's job, with a new link:
     that job's clips again, those still on disk and not posted everywhere."""
-    from gameday.remote_approval import notifier
+    from gameday.remote_approval import captions, notifier
     from gameday.store import loads
 
     old = store.get_review(db, review_id)
@@ -538,13 +538,16 @@ def ask_again(db, review_id: int, *, meta=None) -> int | None:
         ids = {c["clip_id"] for c in old["clips"]}
         clips = [c for c in (db.get_clip(i) for i in ids) if c is not None and summary.offerable(c)]
         hint = ""
+        own_credit = captions.credit_of(old)  # the game's own line is gone with its job: the offer's
     else:
         clips = notifier.clips_of_job(db, old["job_id"])
-        hint = str(loads(job["options"], {}).get("hint") or "")
+        options = loads(job["options"], {})
+        hint = str(options.get("hint") or "")
+        own_credit = options.get("caption_credit")
     return notifier.offer(db, job_id=old["job_id"], video_id=old["video_id"],
                           title=(notifier.job_title(db, job) if job is not None else "") or old["title"],
                           clips=clips, kind=(old.get("summary") or {}).get("kind") or "basketball",
-                          meta=meta, hint=hint)
+                          meta=meta, hint=hint, credit=notifier.credit_line(db, own_credit))
 
 
 def resend(db, review_id: int) -> bool:

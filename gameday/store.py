@@ -12,6 +12,7 @@ the remote_* tables, which keep the ISO stamps the ported approval code
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 import time
@@ -235,9 +236,15 @@ CREATE INDEX IF NOT EXISTS idx_api_calls_job ON api_calls(job_id);
 JOB_STATES = ("queued", "running", "done", "failed", "cancelled")
 STAGE_STATES = ("waiting", "running", "done", "skipped", "failed")
 
-#: What New jobs are made with (GET/PATCH /api/settings).
-DEFAULT_SETTINGS = {"mode": "basketball", "max_clips": 8, "hint": "", "title_cards": True}
+#: What New jobs are made with (GET/PATCH /api/settings). caption_credit is
+#: the credit line every posted caption ends with (remote_approval/captions.py).
+DEFAULT_SETTINGS = {"mode": "basketball", "max_clips": 8, "hint": "", "title_cards": True, "caption_credit": ""}
 SETTINGS_KEY = "job_settings"
+
+#: The credit line's limits: it has to fit under every caption.
+CREDIT_MAX_CHARS = 300
+CREDIT_MAX_LINES = 3
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def loads(value, default):
@@ -293,9 +300,26 @@ def clean_settings(patch: dict, current: dict | None = None) -> dict:
             if not isinstance(value, bool):
                 raise ValueError("title_cards must be true or false.")
             out["title_cards"] = value
+        elif key == "caption_credit":
+            out["caption_credit"] = clean_credit(value)
         else:
             raise ValueError(f"There is no setting called {str(key)[:40]!r}.")
     return out
+
+
+def clean_credit(value) -> str:
+    """The credit line as it is kept: trimmed, each line trimmed, line breaks
+    made plain, tabs made spaces, other control characters dropped. "" is no
+    credit line. Raises ValueError with a sentence for people."""
+    if not isinstance(value, str):
+        raise ValueError("The credit line must be text.")
+    lines = [_CONTROL.sub("", line.replace("\t", " ")).strip() for line in value.splitlines()]
+    text = "\n".join(lines).strip()
+    if len(text) > CREDIT_MAX_CHARS:
+        raise ValueError(f"The credit line can be at most {CREDIT_MAX_CHARS} characters; this one has {len(text)}.")
+    if text.count("\n") >= CREDIT_MAX_LINES:
+        raise ValueError(f"The credit line can be at most {CREDIT_MAX_LINES} lines.")
+    return text
 
 
 class Store:

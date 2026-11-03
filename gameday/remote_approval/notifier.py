@@ -78,7 +78,16 @@ def on_job_finished(db, job, status: str, *, meta=None) -> int | None:
         return None  # already offered and still open: an announce repeated
     return offer(db, job_id=int(row["id"]), video_id=int(row["video_id"]), title=job_title(db, row),
                  clips=clips_of_job(db, row["id"]), config=config, kind=kind, meta=meta,
-                 hint=str(options.get("hint") or ""))
+                 hint=str(options.get("hint") or ""), credit=credit_line(db, options.get("caption_credit")))
+
+
+def credit_line(db, own=None) -> str:
+    """The credit line an offer's captions end with (captions.credit_of): the
+    one its game was queued with (`own`, from the job's options), or else the
+    one set now. A line is footage's own notice, so a game keeps its line when
+    the setting changes later; a game queued with none, or before the setting
+    existed, still gets a line set while it ran."""
+    return str(own or "").strip() or db.job_settings()["caption_credit"]
 
 
 def clips_of_job(db, job_id: int) -> list:
@@ -99,7 +108,8 @@ def published_on(db, clips) -> dict[int, list[str]]:
 
 
 def offer(db, *, job_id: int, video_id: int, title: str, clips, config: dict | None = None,
-          round_no: int | None = None, kind: str = "basketball", meta=None, hint: str = "") -> int | None:
+          round_no: int | None = None, kind: str = "basketball", meta=None, hint: str = "",
+          credit: str | None = None) -> int | None:
     """Make an offer of these clips and queue its message.
 
     Also what "Ask again" calls after an offer expired: a new offer with a
@@ -109,8 +119,12 @@ def offer(db, *, job_id: int, video_id: int, title: str, clips, config: dict | N
     and is never sent there again (commands.queue_publishes).
 
     With `meta`, Muse Spark writes the captions before the message is queued,
-    so the relay loop sends them with the offer."""
+    so the relay loop sends them with the offer. `credit` is the credit line
+    every caption ends with (credit_line, the one set now when None). It is
+    kept on the offer, so the page shows, and the upload posts, the same text
+    whatever the setting says by then; Muse Spark is never told it."""
     config = config or ra_settings.load(db)
+    credit = credit_line(db) if credit is None else str(credit).strip()
     clips = list(clips)
     posted = published_on(db, clips)
     every = set(ra_settings.PLATFORMS)
@@ -121,6 +135,8 @@ def offer(db, *, job_id: int, video_id: int, title: str, clips, config: dict | N
                     f"job {job_id}: no clips left to offer (none on disk, or all posted already)")
         return None
     info = summary.build(title, clips, snap, kind=kind)
+    if credit:
+        info["credit"] = credit  # read back by captions.credit_of
     expires = store.now_utc() + timedelta(hours=int(config["approval_hours"]))
     review_id = store.create_review(
         db, job_id=job_id, video_id=video_id, title=info["title"], clips=snap,

@@ -47,10 +47,17 @@ This is the contract between the platform (routes) and the dashboard
 The relay, PIN, Muse and accounts are in `GET /remote-approval/status` (below).
 
 ### Settings
-- `GET /api/settings` gives `{"mode": "basketball", "max_clips": 8, "hint": "", "title_cards": true}`.
+- `GET /api/settings` gives `{"mode": "basketball", "max_clips": 8, "hint": "", "title_cards": true, "caption_credit": ""}`.
   `mode` is `"basketball"` or `"talk"`, `max_clips` is 1 to 12, and `hint` is "Teams or players" (at most 200 characters).
+- `caption_credit` is the credit line added to the end of every Instagram and Facebook caption, after
+  the hashtags and a blank line (`""` for none). It is trimmed, each line too, and may have at most
+  300 characters and 3 lines. Muse Spark never sees it. A caption too long for its platform is shortened
+  in its body, never in the credit line. Each offer keeps the line it was made with, so the approval page
+  shows exactly what is posted: the line its job was queued with, or, for a job queued without one, the
+  line set when its clips are offered.
 - `PATCH /api/settings` takes any of those fields and returns the whole object.
-  New jobs use the settings at the time they are queued.
+  New jobs use the settings at the time they are queued. A value out of range is refused with 400
+  and a sentence saying why.
 
 ### The Meta key
 - `PUT /api/meta/key` with `{"key": "..."}` gives `{"saved": true}`.
