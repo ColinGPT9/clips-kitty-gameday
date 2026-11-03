@@ -385,6 +385,20 @@ def test_an_approved_clip_goes_to_every_platform_chosen_in_order(db, approved):
     assert store.get_review(db, approved["review_id"])["state"] == states.PUBLISHED
 
 
+def test_usage_counts_every_graph_step_a_publish_makes(db, approved, monkeypatch):
+    from gameday.remote_approval import usage
+
+    relay = ScriptedRelay(
+        ig_create={"container_id": "C1"}, ig_status={"status_code": "FINISHED"}, ig_publish={"media_id": "M1"},
+        ig_permalink={"permalink": "https://www.instagram.com/reel/abc/"},
+        fb_start={"video_id": "V1"}, fb_finish={"success": True}, fb_status=PUBLISHED_REEL)
+    monkeypatch.setattr(publishing, "make_graph", lambda config, device: graph(relay))
+    assert _run(db, approved)["status"] == "done"
+    counted = usage.load(db)["meta_graph"]
+    # Each relay.meta call, plus one upload per platform.
+    assert counted["steps"] == len(relay.calls) + len(relay.uploads) == 9 and counted["uploads"] == 2
+
+
 def test_the_rendered_file_is_uploaded_as_it_is(db, approved):
     _run(db, approved)
     review = store.get_review(db, approved["review_id"])

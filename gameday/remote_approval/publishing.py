@@ -114,6 +114,9 @@ def run(worker, db, job, request_data: dict) -> None:
         usage.record_graph(db, uploads=1, size=entry["size"])
         outcomes[platform] = _record(db, review, clip, platform, posted.state, post_id=posted.post_id,
                                      url=posted.url, error=" ".join(posted.warnings))
+    steps = int(getattr(graph, "steps", 0) or 0)  # failed ones too: each was a request to Meta
+    if steps:
+        usage.record_graph(db, steps=steps)
 
     ok = [p for p, o in outcomes.items() if o["state"] == "published"]
     bad = {p: o for p, o in outcomes.items() if o["state"] != "published"}

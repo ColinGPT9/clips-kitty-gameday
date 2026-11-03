@@ -107,10 +107,12 @@ class MetaGraph:
         self.relay = relay
         self.sleep = sleep
         self.clock = clock
+        self.steps = 0  # Graph API requests asked of the relay, the upload included (Usage counts them)
 
     def _step(self, op: str, ctx: dict, **params) -> dict:
         from gameday.remote_approval.relay import RelayError
 
+        self.steps += 1
         try:
             return self.relay.meta(op, {**ctx, **params})
         except RelayError as e:
@@ -127,6 +129,7 @@ class MetaGraph:
                  "offset": "0", "file_size": str(size)}
         if on_progress:
             on_progress(f"Uploading to {platform.title()}", 0, size)
+        self.steps += 1
         try:
             self.relay.upload_chunk(query, path, 0, size)
         except RelayError as e:
