@@ -166,6 +166,20 @@ def test_it_never_opens_on_a_cutaway_or_a_flash_of_the_shot_before():
     assert start == 86.0  # without SAM it only skips the flash
 
 
+def test_a_short_clip_grows_its_lead_up_rather_than_running_past_the_cut_that_ends_it():
+    # The lead-up shot 88-97 is a crowd cutaway, the call ends the play at the cut 102.8 (then a replay).
+    def cutaway(a, b):
+        return (a, b) == (88.0, 97.0)
+
+    start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 102.8, 108.0],
+                                sents=[s(100.5, 102.0, "Blocked!")], duration_s=400.0, options=OPTS, cutaway=cutaway)
+    assert end == pytest.approx(102.8) and end - start == pytest.approx(OPTS.min_clip_s)
+    # A play in the first seconds: the end may grow, but never across another cut.
+    start, end = moments.refine(moment(play=3.0, start=0.0, category="blocks"), cuts=[5.5, 9.0],
+                                sents=[s(3.2, 4.5, "Blocked!")], duration_s=400.0, options=OPTS)
+    assert (start, end) == (0.0, 9.0)
+
+
 def test_it_starts_a_few_seconds_before_the_call():
     sents = [s(99.0, 101.0, "Here he comes, and the finish!")]
     start, end = moments.refine(moment(start=99.5), cuts=[], sents=sents, duration_s=400.0, options=OPTS)
