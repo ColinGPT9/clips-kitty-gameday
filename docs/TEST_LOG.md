@@ -67,3 +67,20 @@ Each run gives:
   - 415 Python tests on Ubuntu and Windows (4 live tests left out).
   - 105 relay tests.
   - ruff and the provenance check, both clean.
+
+## 3 Nov 2026: an HD game, the demo footage
+
+- **Where:** the same PC and command, Meta's real services.
+- **Commit:** 1a997c1.
+- **Footage:** the second half of Navy vs Air Force at the 2024 Armed Forces
+  Men's Basketball Championship: 45 minutes cut from the DVIDS video, 1080p,
+  public domain, with live commentary.
+- **Result:**
+  - 2,700 s of game made 8 clips in 347 s.
+  - Time per stage: Muse Voice 151 s, Muse Spark 31 s, SAM 3.1 94 s, render 70 s.
+  - Estimated cost: Muse Voice $0.135, Muse Spark $0.031, SAM 3.1 $0.704.
+    Total $0.870, about $0.11 a clip.
+  - Share of each clip that followed the ball: 46%, 80%, 43%, 59%, 73%, 81%, 66% and 63%.
+    The rest of each clip followed the players.
+- **Found:** some clips ran past the play into the broadcast's close-ups. Each
+  clip should end at the first camera cut after the play.

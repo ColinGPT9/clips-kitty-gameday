@@ -190,6 +190,16 @@ Runs on real games, with measured numbers, go in
 Meta, Muse, SAM, Instagram and Facebook are Meta's trademarks.
 This project is not made or endorsed by Meta.
 
+## Demo footage
+
+The demo uses Navy vs Air Force from the 2024 Armed Forces Men's Basketball
+Championship.
+- Video by Justin Fairley, 2D Audiovisual Squadron, on
+  [DVIDS](https://www.dvidshub.net/video/939914).
+- It is a U.S. government work, in the public domain.
+- The appearance of U.S. Department of War (DoW) visual information does not
+  imply or constitute DoW endorsement.
+
 ## License
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).

@@ -88,6 +88,11 @@ More in [SECURITY.md](SECURITY.md).
     window on the ball 72-89% of the time. The 8th clip, the celebration
     after the buzzer, followed the players.
   - Details in [TEST_LOG.md](TEST_LOG.md).
+- **The HD demo game (3 Nov 2026):** the second half of Navy vs Air Force at
+  the 2024 Armed Forces Men's Basketball Championship (45 minutes, 1080p,
+  public domain).
+  - It made 8 clips in 347 s for about $0.87, about 11 cents a clip.
+  - SAM 3.1 kept the window on the ball 43-81% of the time, and on the players the rest.
 - **Cost to post:** Instagram and Facebook Reels go through Meta's Graph
   API at no charge. Muse Spark's captions for a one-clip offer cost
   $0.004.
@@ -99,6 +104,23 @@ More in [SECURITY.md](SECURITY.md).
 - On the same event branch's relay, on 2 Nov 2026, the Muse app connected
   as a custom connector (the remote MCP server, with the key in a header)
   and handed over an offer's approval link, which opened on the phone.
+
+## What's next
+
+**Ball tracking trained for basketball.** SAM 3.1 is a general-purpose
+model. It finds the ball well in clear shots, and loses it when the ball is
+small, fast or in front of the backboard. The next step is to train a Meta
+vision model, Muse Glimmer, on a dataset of basketball games, so the crop
+follows the ball through every play.
+
+## Demo footage
+
+Navy vs Air Force, 2024 Armed Forces Men's Basketball Championship.
+- Video by Justin Fairley, 2D Audiovisual Squadron, on DVIDS
+  (https://www.dvidshub.net/video/939914).
+- It is a U.S. government work, in the public domain.
+- The appearance of U.S. Department of War (DoW) visual information does not
+  imply or constitute DoW endorsement.
 
 ## How to try it
 
