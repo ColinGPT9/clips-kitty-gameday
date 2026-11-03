@@ -15,6 +15,7 @@ this app hands the key to the dashboard once (routes/remote.py).
 
 import json
 import secrets as _random
+from urllib.parse import urlsplit
 
 from gameday.types import MODEL_SPARK
 
@@ -97,7 +98,7 @@ def save(db, patch: dict, *, internal: bool = False) -> dict:
 def _clean(key: str, value):
     if key == "relay_url":
         url = str(value or "").strip().rstrip("/")
-        if url and not url.startswith("https://") and not _is_local(url):
+        if url and not _relay_address_ok(url):
             raise ValueError("The relay address must start with https://")
         return url
     if key == "preferred_destinations":
@@ -129,10 +130,25 @@ def _bounded(value, low: int, high: int, default: int) -> int:
         return default
 
 
-def _is_local(url: str) -> bool:
-    """http:// is allowed for a relay on this machine only: the mock relay
-    the demo and the tests run (meta-relay/test/serve.mjs)."""
-    return url.startswith(("http://127.0.0.1", "http://localhost"))
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _relay_address_ok(url: str) -> bool:
+    """https:// to a named host, with no user or password in the address.
+    http:// only for a relay on this machine: the mock relay the demo and the
+    tests run (meta-relay/test/serve.mjs). The host is parsed, never matched as
+    a prefix, so http://localhost.example.com is refused."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ""
+        _ = parts.port  # a port that isn't a number raises here
+    except ValueError:
+        return False
+    if not host or parts.username is not None or parts.password is not None:
+        return False
+    if parts.scheme == "https":
+        return True
+    return parts.scheme == "http" and host in LOCAL_HOSTS
 
 
 # ---- this app's identity on the relay -----------------------------------------

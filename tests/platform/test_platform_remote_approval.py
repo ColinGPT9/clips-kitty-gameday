@@ -725,8 +725,13 @@ def test_the_loop_paces_itself_and_handles_commands(db, on):
 
 
 def test_settings_are_cleaned_and_never_show_the_secret(db, on):
-    with pytest.raises(ValueError):
-        ra_settings.save(db, {"relay_url": "http://relay.example.com"})
+    for bad in ("http://relay.example.com", "http://localhost.evil.example", "http://localhost@evil.example",
+                "http://127.0.0.1.nip.io", "https://user:pw@relay.example.com", "https://", "ftp://relay.example.com",
+                "https://relay.example.com:port"):
+        with pytest.raises(ValueError):
+            ra_settings.save(db, {"relay_url": bad})
+    for good in ("https://relay.example.com", "http://localhost:8787", "http://[::1]:8787"):
+        assert ra_settings.save(db, {"relay_url": good})["relay_url"] == good
     s = ra_settings.save(db, {"relay_url": "http://127.0.0.1:8787/", "preferred_destinations": ["facebook", "tiktok"],
                               "approval_hours": 999, "pairing": {"state": "confirmed"}})
     assert s["relay_url"] == "http://127.0.0.1:8787"
