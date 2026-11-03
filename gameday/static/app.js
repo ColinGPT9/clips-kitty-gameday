@@ -609,7 +609,15 @@
     let meta = '–';
     if (stage && state !== 'waiting' && state !== 'skipped') {
       const cost = li.dataset.stage === 'render' && !stage.cost_usd ? 'no API cost' : usd(stage.cost_usd, true);
-      meta = `${dur(stage.seconds)} · ${cost}`;
+      // One long Meta call reports its seconds only when it returns: while the stage runs,
+      // count on from when this value was first seen, so the stepper never looks stuck.
+      let seconds = Number(stage.seconds) || 0;
+      if (state === 'running' && job.stage === li.dataset.stage) {
+        const seen = `${job.id}:${seconds}`;
+        if (li.dataset.seen !== seen) { li.dataset.seen = seen; li.dataset.since = String(Date.now()); }
+        seconds += Math.max(0, Date.now() - Number(li.dataset.since)) / 1000;
+      }
+      meta = `${dur(seconds)} · ${cost}`;
     }
     setText(li.querySelector('.stage-meta'), stage && stage.note ? `${meta} · ${stage.note}` : meta);
   }
