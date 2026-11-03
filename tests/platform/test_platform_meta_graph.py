@@ -186,6 +186,34 @@ def test_a_lost_answer_to_the_finish_is_watched_to_the_deadline_and_never_failed
     assert "answer to the publish step was lost" in posted.warnings[0]
 
 
+@pytest.mark.parametrize("lost", [
+    RelayError("network", "Your relay took too long to answer.", retryable=True),
+    refused(platform="instagram", code=1, sub=0, status=503),
+])
+def test_a_lost_answer_to_instagrams_publish_is_never_failed(clip_file, lost):
+    # The container shows the Reel went up after all: published, with no link to show.
+    relay = ScriptedRelay(ig_create={"container_id": "C1"}, ig_publish=lost,
+                          ig_status=[{"status_code": "FINISHED"}, {"status_code": "FINISHED"},
+                                     {"status_code": "PUBLISHED"}])
+    posted = meta_graph.MetaGraph(relay, sleep=lambda s: None, clock=ticking(10)).instagram(CTX, clip_file, "x")
+    assert posted.state == "published" and posted.url == "" and "lost" in posted.warnings[0]
+    assert relay.ops().count("ig_publish") == 1
+    # Never seen to go up: "processing", which Retry failed never posts again.
+    relay = ScriptedRelay(ig_create={"container_id": "C1"}, ig_publish=lost, ig_status={"status_code": "FINISHED"})
+    posted = meta_graph.MetaGraph(relay, sleep=lambda s: None, clock=ticking(30)).instagram(CTX, clip_file, "x")
+    assert posted.state == "processing" and "Check the account" in posted.warnings[0]
+    assert relay.ops().count("ig_publish") == 1
+
+
+def test_an_instagram_publish_refused_or_slowed_down_is_still_an_error(clip_file):
+    for answer, kind in ((refused(platform="instagram", code=4, sub=0, status=503), RateLimited),
+                         (refused(platform="instagram", code=100, sub=33), PublishError)):
+        relay = ScriptedRelay(ig_create={"container_id": "C1"}, ig_status={"status_code": "FINISHED"},
+                              ig_publish=answer)
+        with pytest.raises(kind):
+            graph(relay).instagram(CTX, clip_file, "x")
+
+
 def test_a_finish_asked_to_slow_down_is_a_refusal_not_a_lost_answer(clip_file):
     relay = ScriptedRelay(fb_start={"video_id": "V1"}, fb_finish=refused(code=4, sub=0, status=503),
                           fb_status={"video_status": "ready", "publish_status": "not_published"})
