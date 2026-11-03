@@ -422,7 +422,8 @@ def test_the_credit_line_is_trimmed_checked_and_kept_for_the_next_game(gd):
     assert gd.patch("/api/settings", json={"caption_credit": "x" * 300}).status_code == 200
     assert gd.patch("/api/settings", json={"caption_credit": "One\n\nThree"}).status_code == 200
     for bad, words in (("x" * 301, "at most 300 characters"), ("1\n2\n3\n4", "at most 3 lines"),
-                       (5, "must be text"), (None, "must be text"), (["Footage"], "must be text")):
+                       (5, "must be text"), (None, "must be text"), (["Footage"], "must be text"),
+                       ("Footage \ud83d", "broken character")):
         r = gd.patch("/api/settings", json={"caption_credit": bad})
         assert r.status_code == 400, bad
         error = r.json()["error"]

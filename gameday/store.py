@@ -313,6 +313,10 @@ def clean_credit(value) -> str:
     credit line. Raises ValueError with a sentence for people."""
     if not isinstance(value, str):
         raise ValueError("The credit line must be text.")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:  # half an emoji, from a broken paste: it could never be saved or posted
+        raise ValueError("The credit line has a broken character (half an emoji?). Type it again.") from None
     lines = [_CONTROL.sub("", line.replace("\t", " ")).strip() for line in value.splitlines()]
     text = "\n".join(lines).strip()
     if len(text) > CREDIT_MAX_CHARS:
