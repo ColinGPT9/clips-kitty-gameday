@@ -1,0 +1,13 @@
+{
+  "name": "clips-kitty-meta-relay",
+  "private": true,
+  "type": "module",
+  "description": "Clips Kitty Meta relay: WhatsApp notifications, remote approval and Meta publishing for the desktop app.",
+  "scripts": {
+    "test": "node --no-warnings --experimental-sqlite --test test/*.test.mjs",
+    "dev": "node --no-warnings --experimental-sqlite test/serve.mjs"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

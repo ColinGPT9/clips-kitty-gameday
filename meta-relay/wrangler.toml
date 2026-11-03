@@ -1,0 +1,37 @@
+name = "clips-kitty-meta-relay"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Free Workers Logs: `npx wrangler tail` shows live traffic. The worker logs
+# error codes only, never a token, a phone number or a message body.
+[observability]
+enabled = true
+
+[vars]
+# This worker's own public address, no trailing slash. WhatsApp's "Review
+# clips" button and the OAuth redirects are built from it, so set it to the
+# URL `wrangler deploy` prints (or your custom domain) before creating the
+# message templates.
+PUBLIC_URL = "https://clips-kitty-meta-relay.example.workers.dev"
+# The business number's digits, for the wa.me pairing link (optional).
+WHATSAPP_DISPLAY_NUMBER = ""
+
+# Created with: npx wrangler d1 create clips-kitty-relay
+# then:         npx wrangler d1 execute clips-kitty-relay --remote --file=schema.sql
+[[d1_databases]]
+binding = "DB"
+database_name = "clips-kitty-relay"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# Optional: KV for a small preview video of each offered clip, which the
+# approval page plays before you decide. Without it the page shows
+# thumbnails only. Created with:
+#   npx wrangler kv namespace create clips-kitty-previews
+# then put the id it prints below and take the # off these three lines.
+# [[kv_namespaces]]
+# binding = "PREVIEWS"
+# id = "00000000000000000000000000000000"
+
+# Expiry and "Remind me later".
+[triggers]
+crons = ["*/10 * * * *"]
