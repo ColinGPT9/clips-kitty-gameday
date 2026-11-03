@@ -54,13 +54,17 @@ against its own record of the offer, and publishes.
    prompt, not into the chat**. The sentence itself holds no secret.
 5. **If Muse asks for API details instead** of an MCP server, give it the
    OpenAPI description at `https://<your relay>/muse/openapi.json`. It
-   describes the same tools as plain HTTPS routes with the same key. A
-   plain-text guide is at `https://<your relay>/muse`.
+   describes the same tools as plain HTTPS routes with the same key.
 6. **Set an approval PIN and connect your accounts** in **Setup**, then
    switch on **Let me approve publishing from my phone**. It needs Muse
    connected and the PIN.
 
 Try it: "Clips Kitty, what highlights are ready?"
+
+The relay is shared with the desktop edition of Clips Kitty, so some of its
+own wording, which Muse may repeat, doesn't fit this app: another way of
+being messaged, or a Settings screen. Neither applies here. This app sends
+no messages, and Muse keys are made in **Setup → Muse**.
 
 ## The tools
 
