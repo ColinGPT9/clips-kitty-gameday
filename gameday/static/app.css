@@ -653,6 +653,10 @@ select.input { cursor: pointer; }
 .clip:hover { border-color: var(--ck-line-strong); }
 .clip-media { position: relative; background: var(--ck-page); }
 .clip-media video { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; background: var(--ck-page); }
+/* Full screen shows the whole 9:16 clip with bars at the sides; "cover" would zoom it to the screen's width
+   and cut off the top and bottom, where the rim usually is. */
+.clip-media video:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; background: #000; }
+.clip-media video:-webkit-full-screen { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; background: #000; }
 .score {
   position: absolute;
   top: 8px; left: 8px;
