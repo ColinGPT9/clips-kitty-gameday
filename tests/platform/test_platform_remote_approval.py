@@ -307,6 +307,26 @@ def test_muse_spark_writes_every_clips_words_in_one_request_and_it_is_kept(db, o
     assert db.job_cost(job["id"]) == 0.002
 
 
+def test_hashtags_muse_spark_puts_in_the_caption_are_posted_once(db, on):
+    meta = FakeMeta(db.ledger())
+    plain = meta.chat_json
+
+    def with_hashtags_inside(*args, **kwargs):
+        answer = plain(*args, **kwargs)
+        for clip in answer["clips"]:
+            clip["instagram_caption"] += " #Hoops #Clutch"  # what the real Muse Spark did
+            clip["facebook_description"] = "What a #clutch finish. #HOOPS"
+        return answer
+
+    meta.chat_json = with_hashtags_inside
+    review = store.get_review(db, notifier.on_job_finished(db, finished_job(db, on), "done", meta=meta))
+    entry = review["clips"][0]
+    text = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
+    assert text["instagram"] == "Poster dunk from tonight.\n\n#hoops #game #day #basketball #clutch"
+    assert text["facebook"] == "What a #clutch finish.\n\n#hoops #game #day #basketball"
+    assert "no hashtags" in captions.INSTRUCTIONS
+
+
 def test_an_answer_naming_clips_it_was_not_given_is_cleaned():
     parsed = captions._parse({"summary": " A\n night ", "clips": [
         {"clip_id": 7, "title": "x" * 200, "instagram_caption": "a", "facebook_description": "b",

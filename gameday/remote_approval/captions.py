@@ -51,9 +51,9 @@ SCHEMA = {
 # What every kind of offer asks for, and how the answer comes back.
 _ASK = (
     "For each clip below, write: a short title (max 80 characters); an Instagram Reels caption (1-3 "
-    "sentences, then hashtags); a Facebook Reels description (1-3 sentences); and 3 to 6 hashtags "
-    "without spaces. Also write `summary`: one sentence (max 140 characters) describing the set of "
-    "highlights.\n"
+    "sentences, no hashtags); a Facebook Reels description (1-3 sentences, no hashtags); and 3 to 6 "
+    "hashtags without spaces, which are added to both. Also write `summary`: one sentence (max 140 "
+    "characters) describing the set of highlights.\n"
 )
 _ANSWER = " Answer with JSON matching the schema, with one entry per clip_id given and no others."
 
@@ -211,6 +211,24 @@ def hashtags(values, *, limit: int = 6) -> list[str]:
     return out[:limit]
 
 
+_TAG = re.compile(r"#\w+")
+_TRAILING_TAGS = re.compile(r"(?:[\s,;]*#\w+)+[\s.]*$")
+
+
+def with_tags(text: str, tags: list[str], *, limit: int = 8) -> str:
+    """`text`, then a blank line and the hashtags, each said once. A run of
+    hashtags Muse Spark put at the end of `text` anyway is folded into them,
+    and one it used inside a sentence is not repeated after it."""
+    text = str(text or "").strip()
+    run = _TRAILING_TAGS.search(text)
+    if run:
+        tags = hashtags([*tags, *_TAG.findall(run.group(0))], limit=limit)
+        text = text[:run.start()].strip()
+    said = set(hashtags(_TAG.findall(text), limit=100))
+    rest = [t for t in tags if t not in said]
+    return "\n\n".join(p for p in (text, " ".join(rest)) if p)
+
+
 # ---- the text each platform gets ------------------------------------------------------
 
 
@@ -236,8 +254,8 @@ def texts_for(review: dict, clip_row, entry: dict) -> dict:
         title = mine["title"] or entry.get("title") or entry.get("label") or fallback
         return {
             "title": title,
-            "instagram": f"{mine['instagram']}\n\n{' '.join(tags)}".strip(),
-            "facebook": f"{mine['facebook']}\n\n{' '.join(tags)}".strip(),
+            "instagram": with_tags(mine["instagram"], tags),
+            "facebook": with_tags(mine["facebook"], tags),
             "source": "muse_spark",
         }
     title = (entry.get("title") or entry.get("label") or fallback).strip()
