@@ -23,9 +23,11 @@ import hmac
 import ipaddress
 import logging
 import math
+import os
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -202,6 +204,31 @@ def add_watch_dir(store: Store, config: Config) -> None:
     store.set_flag(WATCH_DIR_FLAG, str(folder))
 
 
+def sweep_uploads(store: Store, config: Config, *, older_than_s: float = 3600.0) -> int:
+    """Delete what an upload cut off by a kill or a crash left in DATA_DIR/uploads:
+    files no video row points at, untouched for an hour. Returns how many went."""
+    def key(path) -> str:
+        return os.path.normcase(str(Path(path).resolve()))
+
+    kept = {key(row["path"]) for row in store.conn.execute("SELECT path FROM videos").fetchall()}
+    gone = 0
+    cutoff = time.time() - older_than_s
+    try:
+        files = [p for p in config.uploads_dir.iterdir() if p.is_file()]
+    except OSError:
+        return 0
+    for path in files:
+        try:
+            if key(path) not in kept and path.stat().st_mtime < cutoff:
+                path.unlink()
+                gone += 1
+        except OSError:
+            continue
+    if gone:
+        log.info("Removed %d unfinished upload%s left by an earlier run.", gone, "" if gone == 1 else "s")
+    return gone
+
+
 def create_app(config: Config | None = None, *, pipeline=None, meta_factory=None, run_threads: bool = True,
                feed=None, probe=None) -> FastAPI:
     """The app. `pipeline`, `meta_factory`, `feed` and `probe` are seams for
@@ -213,6 +240,7 @@ def create_app(config: Config | None = None, *, pipeline=None, meta_factory=None
     secret_store.attach(store, config)
     worker = Worker(store, config, pipeline=pipeline, meta_factory=meta_factory, feed=feed, probe=probe)
     add_watch_dir(store, config)
+    sweep_uploads(store, config)
 
     @asynccontextmanager
     async def lifespan(app):

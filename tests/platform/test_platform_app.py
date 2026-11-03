@@ -335,6 +335,39 @@ def test_an_upload_over_the_limit_is_refused_and_nothing_is_kept(gd):
     assert gd.store.jobs() == []
 
 
+def test_an_upload_cut_off_by_a_cancel_leaves_nothing_behind(make_app):
+    class Cancelled(BaseException):  # like asyncio.CancelledError: not an Exception
+        pass
+
+    def cancelled_probe(path):
+        raise Cancelled()
+
+    app = make_app(probe=cancelled_probe)
+    with pytest.raises(Cancelled):
+        app.post("/api/upload?filename=game.mp4", content=VIDEO_BYTES + b"\0" * 1000,
+                 headers={"Content-Type": "application/octet-stream"})
+    assert list(app.config.uploads_dir.iterdir()) == []
+
+
+def test_uploads_left_by_a_killed_run_are_swept_at_the_next_start(make_app):
+    from gameday.app import sweep_uploads
+
+    gd = make_app()
+    r = gd.post("/api/upload?filename=kept.mp4", content=VIDEO_BYTES + b"\0" * 100,
+                headers={"Content-Type": "application/octet-stream"})
+    assert r.status_code == 200
+    uploads = gd.config.uploads_dir
+    [kept] = list(uploads.iterdir())
+    stray, fresh = uploads / "0123abcd_cut.mp4", uploads / "4567abcd_arriving.mp4"
+    stray.write_bytes(b"part of a game")
+    fresh.write_bytes(b"part of a game")
+    hour_ago = os.stat(stray).st_mtime - 7200
+    for path in (kept, stray):
+        os.utime(path, (hour_ago, hour_ago))
+    assert sweep_uploads(gd.store, gd.config) == 1
+    assert sorted(p.name for p in uploads.iterdir()) == sorted([kept.name, fresh.name])
+
+
 def test_a_file_that_is_not_a_video_is_refused_and_removed(gd):
     r = gd.post("/api/upload?filename=notes.mp4", content=b"just some text",
                 headers={"Content-Type": "application/octet-stream"})

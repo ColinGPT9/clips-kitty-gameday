@@ -195,38 +195,41 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
         config.uploads_dir.mkdir(parents=True, exist_ok=True)
         target = config.uploads_dir / f"{uuid.uuid4().hex[:12]}_{name}"
         size = 0
-        try:
-            with open(target, "xb") as out:
-                async for chunk in request.stream():
-                    size += len(chunk)
-                    if size > limit:
-                        raise HTTPException(413, too_big)
-                    out.write(chunk)
-        except (HTTPException, ClientDisconnect, OSError) as e:
-            _remove(target)
-            if isinstance(e, HTTPException):
-                raise
-            if isinstance(e, ClientDisconnect):
-                raise HTTPException(400, "The upload stopped before the whole file arrived.") from None
-            raise HTTPException(500, "The app couldn't save the upload.") from None
-        if not size:
-            _remove(target)
-            raise HTTPException(400, "The upload was empty.")
-        try:
-            info = await run_in_threadpool(probe, target)
-        except media.MediaError:
-            _remove(target)
-            raise HTTPException(400, "That file isn't a video the app can read.") from None
-        stat = target.stat()
+        kept = False
+        try:  # the file goes, whatever stops this (a cancelled task too), unless a video row holds it
+            try:
+                with open(target, "xb") as out:
+                    async for chunk in request.stream():
+                        size += len(chunk)
+                        if size > limit:
+                            raise HTTPException(413, too_big)
+                        out.write(chunk)
+            except (HTTPException, ClientDisconnect, OSError) as e:
+                if isinstance(e, HTTPException):
+                    raise
+                if isinstance(e, ClientDisconnect):
+                    raise HTTPException(400, "The upload stopped before the whole file arrived.") from None
+                raise HTTPException(500, "The app couldn't save the upload.") from None
+            if not size:
+                raise HTTPException(400, "The upload was empty.")
+            try:
+                info = await run_in_threadpool(probe, target)
+            except media.MediaError:
+                raise HTTPException(400, "That file isn't a video the app can read.") from None
+            stat = target.stat()
 
-        def record():
-            video_id = store.add_video(name=name, path=str(target.resolve()), source="upload", size=stat.st_size,
-                                       mtime_ns=stat.st_mtime_ns, duration_s=info.duration_s)
-            job_id = store.add_job(video_id, store.job_settings())
-            store.add_event("info", "upload", f"Uploaded {name}: job {job_id} is queued.", job_id=job_id)
-            return video_id, job_id
+            def record():
+                video_id = store.add_video(name=name, path=str(target.resolve()), source="upload",
+                                           size=stat.st_size, mtime_ns=stat.st_mtime_ns, duration_s=info.duration_s)
+                job_id = store.add_job(video_id, store.job_settings())
+                store.add_event("info", "upload", f"Uploaded {name}: job {job_id} is queued.", job_id=job_id)
+                return video_id, job_id
 
-        video_id, job_id = await run_in_threadpool(record)
+            video_id, job_id = await run_in_threadpool(record)
+            kept = True
+        finally:
+            if not kept:
+                _remove(target)
         worker.wake_jobs()
         return {"video_id": video_id, "job_id": job_id}
 
