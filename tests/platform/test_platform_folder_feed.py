@@ -9,12 +9,10 @@ and a found file is only read. Tests of the desktop app's copy-in and
 """
 
 import os
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
-from platform_fakes import ffmpeg_ok
+from platform_fakes import ffmpeg_ok, make_video
 
 from gameday import media
 from gameday.watch import folder as folder_feed
@@ -22,6 +20,7 @@ from gameday.watch.folder import FolderFeed, picked_folder
 from gameday.watch.watcher import Watcher, check_folder
 
 T0 = 1_800_000_000.0
+WINDOWS = os.name == "nt"
 
 
 class Clock:
@@ -109,7 +108,7 @@ def test_hidden_temporary_and_half_downloaded_files_and_subfolders_are_passed_ov
     assert sorted(names(present)) == ["Final Cut.MOV", "final.mp4"]
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="the hidden mark is Windows' own")
+@pytest.mark.skipif(not WINDOWS, reason="the hidden mark is Windows' own")
 def test_a_file_windows_marks_hidden_is_passed_over(tmp_path, feed):
     import ctypes
 
@@ -167,7 +166,7 @@ def test_a_folder_that_is_gone_is_an_error_not_an_empty_folder(tmp_path, feed):
 # ---- is it ready to read? -------------------------------------------------------------
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="a file open for writing is Windows' own answer")
+@pytest.mark.skipif(not WINDOWS, reason="a file open for writing is Windows' own answer")
 def test_a_file_still_open_in_the_program_copying_it_in_is_waited_for_unread(tmp_path, clock, feed):
     """A paused copy has its full size and an unchanging time, so it settles.
     The program copying it still has it open to write, and that is what says
@@ -180,7 +179,7 @@ def test_a_file_still_open_in_the_program_copying_it_in_is_waited_for_unread(tmp
         assert feed.not_ready(found) == ""
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="the online-only mark is Windows' own")
+@pytest.mark.skipif(not WINDOWS, reason="the online-only mark is Windows' own")
 def test_a_file_only_online_is_waited_for_and_never_read(tmp_path, clock, db):
     """Reading a OneDrive or Dropbox file that is only online has the sync app
     download all of it first, with the watcher waiting. It waits for the sync
@@ -218,7 +217,7 @@ def test_what_ffprobe_says_never_carries_the_files_path(tmp_path, clock, db, mon
     watcher = Watcher(db, feed=FolderFeed(clock=clock))
 
     def unreadable(command, **kwargs):
-        raise subprocess.CalledProcessError(1, command, "", f"{command[-1]}: Invalid data found")
+        raise media.subprocess.CalledProcessError(1, command, "", f"{command[-1]}: Invalid data found")
 
     monkeypatch.setattr(media.subprocess, "run", unreadable)
     watcher.pass_once()
@@ -248,10 +247,7 @@ def test_a_real_file_is_read_and_the_original_stays_as_it_was(tmp_path, clock, d
         pytest.skip("ffmpeg isn't available")
     drive = tmp_path / "drive"
     drive.mkdir()
-    original = drive / "Blue vs Gold final.mp4"
-    subprocess.run([media.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=720x1280:rate=30",
-                    "-f", "lavfi", "-i", "sine", "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                    "-c:a", "aac", "-shortest", str(original)], check=True, capture_output=True, timeout=120)
+    original = make_video(drive / "Blue vs Gold final.mp4")
     before = (original.read_bytes(), original.stat().st_mtime_ns)
     db.add_watch(str(drive.resolve()))
     watcher = Watcher(db, feed=FolderFeed(clock=clock))

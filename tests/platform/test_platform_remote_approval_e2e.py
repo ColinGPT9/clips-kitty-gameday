@@ -19,14 +19,12 @@ also needs ffmpeg.
 import json
 import os
 import shutil
-import subprocess
 
 import pytest
 import requests
 from conftest import ENROLL_KEY, VIDEO_BYTES
-from platform_fakes import RELAY_DIR, FakeMeta, Muse, Phone, csrf_of, ffmpeg_ok, finished_job, node_ok
+from platform_fakes import RELAY_DIR, FakeMeta, Muse, Phone, csrf_of, ffmpeg_ok, finished_job, make_video, node_ok
 
-from gameday import media
 from gameday.remote_approval import commands, notifier, publishing, service, states, store
 from gameday.remote_approval import settings as ra_settings
 
@@ -126,7 +124,9 @@ def test_a_finished_game_goes_from_whatsapp_to_instagram_and_facebook(pc):
     token = phone.link_token(message)
     status, html = phone.open(token)
     assert status == 200
-    assert "Poster dunk in the third" in html and "@hoopsdaily" in html and 'name="pin"' in html
+    account = ra_settings.load(db)["accounts"]["instagram"]["name"]  # as the relay reported it
+    assert account and account in html
+    assert "Poster dunk in the third" in html and 'name="pin"' in html
     first, second = review["clips"][0]["clip_id"], review["clips"][1]["clip_id"]
     status, html = phone.submit(token, [
         ("csrf", csrf_of(html)), ("action", "approve"), ("clip", str(first)), ("clip", str(second)),
@@ -273,11 +273,7 @@ def test_the_phone_plays_each_clip_before_approving(pc):
     phone, db = pc["phone"], pc["db"]
     job = finished_job(db, pc["dir"], title="Blue vs Purple")
     # Real 12-second videos in place of the clips' random bytes, so the app can make their previews.
-    source = pc["dir"] / "source.mp4"
-    subprocess.run([media.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i",
-                    "testsrc2=size=360x640:rate=30:duration=12", "-f", "lavfi", "-i", "sine=frequency=440:duration=12",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", str(source)],
-                   check=True, capture_output=True, timeout=120)
+    source = make_video(pc["dir"] / "source.mp4", size="360x640", seconds=12)
     for clip in db.clips_for_job(job["id"]):
         shutil.copyfile(source, clip["path"])
     review_id = notifier.on_job_finished(db, job, "done")

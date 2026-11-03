@@ -91,9 +91,7 @@ def picked_folder(raw: str) -> Path | None:
     resolved (so `..` segments are collapsed before anything acts on it), a
     real directory, and a local one, never a `\\\\server\\share` network path,
     typed or reached through a mapped drive."""
-    if not raw or "\x00" in raw:
-        return None
-    if raw.startswith("\\\\") or raw.startswith("//"):
+    if not raw or "\x00" in raw or raw.startswith(("\\\\", "//")):
         return None
     try:
         if not Path(raw).is_absolute():

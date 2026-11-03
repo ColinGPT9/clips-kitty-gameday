@@ -16,12 +16,11 @@ import io
 import json
 import os
 import re
-import shutil
-import subprocess
 import threading
 import time
 from pathlib import Path
 
+from gameday import media
 from gameday.remote_approval import relay as relay_mod
 from gameday.remote_approval import settings as ra_settings
 from gameday.types import (
@@ -312,21 +311,34 @@ RELAY_DIR = ROOT / "meta-relay"
 
 
 def node_ok() -> bool:
-    node = shutil.which("node")
+    """Node 22.5 or later on the PATH: node:sqlite, which serve.mjs needs."""
+    from shutil import which
+    from subprocess import run
+
+    node = which("node")
     if not node:
         return False
     try:
-        out = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=10).stdout
+        version = run([node, "--version"], capture_output=True, text=True, timeout=10).stdout.strip()
     except Exception:
         return False
-    m = re.match(r"v(\d+)\.(\d+)", out.strip())
-    return bool(m) and (int(m[1]), int(m[2])) >= (22, 5)
+    found = re.match(r"v(\d+)\.(\d+)", version)
+    return bool(found) and (int(found[1]), int(found[2])) >= (22, 5)
 
 
 def ffmpeg_ok() -> bool:
-    from gameday import media
+    from shutil import which
 
-    return bool(shutil.which(media.FFMPEG) and shutil.which(media.FFPROBE))
+    return bool(which(media.FFMPEG) and which(media.FFPROBE))
+
+
+def make_video(path: Path, *, size: str = "720x1280", seconds: float = 3, rate: int = 30) -> Path:
+    """A real H.264 + AAC MP4 made by ffmpeg: test bars and a tone."""
+    media.run_ffmpeg(["-f", "lavfi", "-i", f"testsrc2=size={size}:rate={rate}:duration={seconds}",
+                      "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}", "-c:v", "libx264",
+                      "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(path)],
+                     timeout=120)
+    return path
 
 
 class Phone:
