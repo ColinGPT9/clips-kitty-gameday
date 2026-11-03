@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Clips Kitty Game Day</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <a class="brand" href="#gameday">
+    <img class="brand-mark" src="/static/icon.svg" alt="" width="28" height="28">
+    <span class="brand-text">
+      <span class="brand-name">Clips <span class="brand-accent">Kitty</span></span>
+      <span class="brand-tag">Game Day · Meta models</span>
+    </span>
+  </a>
+  <span class="top-dot" id="top-dot" data-state="unknown" role="img" aria-label="Checking setup" title="Checking setup"></span>
+  <button type="button" class="menu-btn" id="menu-open" aria-label="Open menu" aria-expanded="false" aria-controls="side">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+</header>
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="shell">
+<aside class="side" id="side" aria-label="Menu">
+  <div class="side-brand">
+    <a class="brand" href="#gameday">
+      <img class="brand-mark" src="/static/icon.svg" alt="" width="34" height="34">
+      <span class="brand-text">
+        <span class="brand-name">Clips <span class="brand-accent">Kitty</span></span>
+        <span class="brand-tag">Game Day · Meta models</span>
+      </span>
+    </a>
+    <button type="button" class="close-btn" id="menu-close" aria-label="Close menu">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+  <nav class="nav" aria-label="Pages">
+    <a class="nav-item" href="#gameday" data-view="gameday">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M6.2 5.2a11 11 0 0 1 0 13.6M17.8 5.2a11 11 0 0 0 0 13.6"/></svg>
+      <span>Game day</span>
+      <span class="live-dot" id="nav-live" title="A game is being clipped" hidden><span class="sr-only">A game is being clipped</span></span>
+    </a>
+    <a class="nav-item" href="#clips" data-view="clips">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.4v5.2l4.4-2.6z"/></svg>
+      <span>Clips</span>
+    </a>
+    <a class="nav-item" href="#offers" data-view="offers">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18h3M9.5 10.5l2 2 3.5-3.5"/></svg>
+      <span>Phone offers</span>
+      <span class="count" id="nav-offers" hidden></span>
+    </a>
+    <a class="nav-item" href="#setup" data-view="setup">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h8.5M17.5 7H20M4 17h2.5M11.5 17H20"/><circle cx="15" cy="7" r="2.5"/><circle cx="9" cy="17" r="2.5"/></svg>
+      <span>Setup</span>
+      <span class="count warn" id="nav-setup" hidden></span>
+    </a>
+    <a class="nav-item" href="#usage" data-view="usage">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M7 16v-4M12 16V7M17 16v-7"/></svg>
+      <span>Usage</span>
+    </a>
+  </nav>
+  <div class="side-status">
+    <p class="label">Status</p>
+    <ul class="pills" aria-label="Connections">
+      <li class="pill" id="pill-meta" data-state="unknown">Meta key</li>
+      <li class="pill" id="pill-relay" data-state="unknown">Relay</li>
+      <li class="pill" id="pill-pin" data-state="unknown">PIN</li>
+      <li class="pill" id="pill-muse" data-state="unknown">Muse</li>
+      <li class="pill" id="pill-instagram" data-state="unknown">Instagram</li>
+      <li class="pill" id="pill-facebook" data-state="unknown">Facebook</li>
+    </ul>
+    <p class="label">Estimated spend</p>
+    <p class="side-spend"><b id="side-spend">—</b> of <span id="side-budget">—</span></p>
+    <progress class="bar rail" id="side-bar" max="100" value="0"></progress>
+  </div>
+  <div class="side-foot">
+    <a class="foot-link" href="https://github.com/ColinGPT9/clips-kitty-gameday" target="_blank" rel="noopener noreferrer"><b>Open source</b> — view on GitHub ↗</a>
+    <p class="foot-licence">AGPL-3.0 · Meta models only</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <p class="banner" id="banner" role="alert" hidden></p>
+
+  <!-- Game day -->
+  <section class="view" id="view-gameday" aria-labelledby="h-gameday">
+    <header class="page-head">
+      <h1 id="h-gameday">Game day</h1>
+      <p class="head-pill">spend: <b id="head-spend">—</b></p>
+    </header>
+    <p class="callout" id="setup-callout" hidden><span id="setup-callout-text"></span> <a href="#setup">Open Setup</a></p>
+
+    <div class="card">
+      <h2>Upload a game</h2>
+      <div class="drop" id="drop">
+        <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/></svg>
+        <p class="drop-title">Drop a game video here</p>
+        <p class="drop-sub">or <button type="button" class="btn small primary" id="pick">Pick a file</button></p>
+        <p class="hint" id="upload-limit">MP4, MOV or MKV.</p>
+        <input type="file" id="file" class="sr-only" accept="video/*,.mp4,.mov,.mkv,.webm,.m4v,.ts" tabindex="-1">
+      </div>
+      <div class="upload" id="upload" hidden>
+        <div class="split"><span class="upload-name" id="upload-name"></span><span class="hint num" id="upload-nums"></span></div>
+        <progress class="bar" id="upload-bar" max="100" value="0"></progress>
+        <div class="btns"><button type="button" class="btn small" id="upload-cancel">Stop upload</button></div>
+      </div>
+      <p class="note" id="upload-note" role="status"></p>
+      <p class="hint"><span id="options-line">Basketball</span> · <a href="#setup">Change</a></p>
+      <p class="hint">Or copy games into a watched folder (Setup).</p>
+    </div>
+
+    <div class="card now" id="now" hidden>
+      <div class="now-head">
+        <p class="now-title"><span class="now-name" id="now-name"></span> <span class="dim" id="now-src"></span></p>
+        <div class="btns"><span class="live-pill" id="now-pill">Clipping</span><span class="btns" id="now-actions"></span></div>
+      </div>
+      <div class="split hint"><span id="now-step"></span><span class="num" id="now-pct"></span></div>
+      <ol class="rail-row" id="rail" aria-hidden="true">
+        <li><progress class="seg" data-stage="voice" max="100" value="0"></progress></li>
+        <li><progress class="seg" data-stage="spark" max="100" value="0"></progress></li>
+        <li><progress class="seg" data-stage="sam" max="100" value="0"></progress></li>
+        <li><progress class="seg" data-stage="render" max="100" value="0"></progress></li>
+        <li><progress class="seg" data-stage="captions" max="100" value="0"></progress></li>
+      </ol>
+      <ol class="stepper" id="stepper">
+        <li class="stage" data-stage="voice" data-state="waiting"><span class="badge" aria-hidden="true"></span><span class="stage-name">Muse Voice</span><span class="stage-word"></span><span class="stage-meta"></span></li>
+        <li class="stage" data-stage="spark" data-state="waiting"><span class="badge" aria-hidden="true"></span><span class="stage-name">Muse Spark</span><span class="stage-word"></span><span class="stage-meta"></span></li>
+        <li class="stage" data-stage="sam" data-state="waiting"><span class="badge" aria-hidden="true"></span><span class="stage-name">SAM 3.1</span><span class="stage-word"></span><span class="stage-meta"></span></li>
+        <li class="stage" data-stage="render" data-state="waiting"><span class="badge" aria-hidden="true"></span><span class="stage-name">9:16</span><span class="stage-word"></span><span class="stage-meta"></span></li>
+        <li class="stage" data-stage="captions" data-state="waiting"><span class="badge" aria-hidden="true"></span><span class="stage-name">Captions</span><span class="stage-word"></span><span class="stage-meta"></span></li>
+      </ol>
+      <p class="hint now-msg" id="now-msg"></p>
+      <p class="hint divided num" id="now-total"></p>
+      <div id="now-warnings"></div>
+    </div>
+
+    <div class="pair-grid">
+      <div class="card">
+        <div class="card-head"><h2>Games</h2><span class="hint num" id="jobs-meta"></span></div>
+        <p class="empty" id="jobs-empty" hidden>No games yet. Upload one above.</p>
+        <section class="group" id="group-running" hidden><h3 class="group-head">Running <span class="group-count"></span></h3><ul class="jobs"></ul></section>
+        <section class="group" id="group-queued" hidden><h3 class="group-head">Up next <span class="group-count"></span></h3><ul class="jobs"></ul></section>
+        <section class="group" id="group-failed" hidden><h3 class="group-head">Failed <span class="group-count"></span></h3><ul class="jobs"></ul></section>
+        <section class="group" id="group-done" hidden><h3 class="group-head">Finished <span class="group-count"></span></h3><ul class="jobs"></ul></section>
+        <p class="note" id="jobs-note" role="status"></p>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h2>Activity</h2>
+          <div class="filters" id="events-filter" role="group" aria-label="Show">
+            <button type="button" class="filter" data-level="" aria-pressed="true">All</button>
+            <button type="button" class="filter" data-level="warn" aria-pressed="false">Warnings</button>
+            <button type="button" class="filter" data-level="error" aria-pressed="false">Errors</button>
+          </div>
+        </div>
+        <p class="empty mono" id="events-empty">Waiting for events…</p>
+        <ol class="feed" id="events"></ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Clips -->
+  <section class="view" id="view-clips" aria-labelledby="h-clips" hidden>
+    <header class="page-head">
+      <h1 id="h-clips">Clips</h1>
+      <p class="head-pill">clips: <b id="clips-count">0</b></p>
+    </header>
+    <div class="clip-controls">
+      <input class="input search" type="search" id="clips-search" placeholder="Search clips…" aria-label="Search clips" autocomplete="off">
+      <select class="input compact" id="clips-job" aria-label="Game"><option value="">All games</option></select>
+    </div>
+    <div class="filters" id="clips-cats" role="group" aria-label="Kind of play"></div>
+    <p class="empty" id="clips-empty" hidden>No clips yet. They show up here when a game finishes.</p>
+    <p class="note bad" id="clips-note" role="status"></p>
+    <div class="clip-groups" id="clip-groups"></div>
+  </section>
+
+  <!-- Phone offers -->
+  <section class="view narrow-1024" id="view-offers" aria-labelledby="h-offers" hidden>
+    <header class="page-head small-head">
+      <h1 id="h-offers">Phone offers</h1>
+      <p class="page-sub">Clips waiting for your OK on your phone, and what got posted.</p>
+    </header>
+    <p class="callout" id="offers-off" hidden>Phone approval is off. <a href="#setup">Turn it on in Setup</a>.</p>
+    <div class="card">
+      <div class="card-head"><h2>Recent offers</h2><button type="button" class="btn small" id="offers-refresh">Check the relay</button></div>
+      <p class="hint" id="offers-phone"></p>
+      <p class="empty" id="offers-empty" hidden>No offers yet.</p>
+      <div class="offers" id="offers"></div>
+      <p class="note" id="offers-note" role="status"></p>
+      <p class="hint divided num" id="offers-cost"></p>
+    </div>
+  </section>
+
+  <!-- Setup -->
+  <section class="view narrow-528" id="view-setup" aria-labelledby="h-setup" hidden>
+    <header class="page-head"><h1 id="h-setup">Setup</h1></header>
+
+    <div class="card checklist" id="checklist">
+      <ol class="rail-row top-rail" id="setup-rail" aria-hidden="true"></ol>
+      <div class="card-head">
+        <div>
+          <h2 id="setup-title">Get ready for game day</h2>
+          <p class="hint" id="setup-count"></p>
+        </div>
+        <button type="button" class="btn small" id="steps-toggle" aria-expanded="true" hidden>Show steps ▸</button>
+      </div>
+
+      <div class="steps" id="steps">
+        <section class="step" id="step-meta" data-done="false">
+          <button type="button" class="step-head" aria-expanded="true" aria-controls="body-meta"><span class="badge" aria-hidden="true">1</span><span class="step-name">1. Meta key</span><span class="caret" aria-hidden="true"></span></button>
+          <p class="step-state" id="meta-state"></p>
+          <div class="step-body" id="body-meta">
+            <div class="status-row" id="meta-saved" hidden>
+              <span class="ok-text">● <span id="meta-saved-text">Key saved</span></span>
+              <span class="badge-tag info" id="meta-env-tag" hidden>FROM ENV</span>
+              <span class="btns push"><button type="button" class="btn small" id="meta-test">Test</button><button type="button" class="btn small" id="meta-remove">Remove</button></span>
+            </div>
+            <p class="hint" id="meta-env-note" hidden>Set where the server runs. Change it there.</p>
+            <form class="form" id="meta-form" autocomplete="off">
+              <label class="label" for="meta-key">Meta API key</label>
+              <div class="input-row">
+                <input class="input" type="password" id="meta-key" autocomplete="off" spellcheck="false" placeholder="Paste your Meta Model API key">
+                <button type="button" class="btn small" id="meta-show">Show</button>
+                <button type="submit" class="btn small primary" id="meta-save" disabled>Save</button>
+              </div>
+              <p class="hint">Stored encrypted on the server and never shown again.</p>
+            </form>
+            <p class="note" id="meta-note" role="status"></p>
+          </div>
+        </section>
+
+        <section class="step" id="step-relay" data-done="false">
+          <button type="button" class="step-head" aria-expanded="true" aria-controls="body-relay"><span class="badge" aria-hidden="true">2</span><span class="step-name">2. Relay</span><span class="caret" aria-hidden="true"></span></button>
+          <p class="step-state" id="relay-state"></p>
+          <div class="step-body" id="body-relay">
+            <div class="status-row" id="relay-connected" hidden>
+              <span class="ok-text">Connected</span>
+              <span class="dim wrap" id="relay-url-shown"></span>
+              <span class="btns push"><button type="button" class="btn small" id="relay-disconnect">Disconnect</button></span>
+            </div>
+            <form class="form" id="relay-form" autocomplete="off">
+              <label class="label" for="relay-url">Relay URL</label>
+              <input class="input" type="url" id="relay-url" placeholder="https://your-relay.example" spellcheck="false" autocomplete="off">
+              <label class="label" for="relay-key">Enrolment key</label>
+              <input class="input" type="password" id="relay-key" spellcheck="false" autocomplete="off">
+              <div class="btns"><button type="submit" class="btn small primary" id="relay-connect" disabled>Connect</button></div>
+              <p class="hint">Your own small relay carries offers to your phone and posts what you approve (docs/RELAY_SETUP.md). The key is used once. Leave it empty if RELAY_ENROLMENT_KEY is set where the app runs.</p>
+            </form>
+            <p class="note" id="relay-note" role="status"></p>
+          </div>
+        </section>
+
+        <section class="step" id="step-pin" data-done="false">
+          <button type="button" class="step-head" aria-expanded="true" aria-controls="body-pin"><span class="badge" aria-hidden="true">3</span><span class="step-name">3. PIN</span><span class="caret" aria-hidden="true"></span></button>
+          <p class="step-state" id="pin-state"></p>
+          <div class="step-body" id="body-pin">
+            <form class="form" id="pin-form" autocomplete="off">
+              <label class="label" for="pin">Approval PIN, 4 to 8 digits</label>
+              <div class="input-row">
+                <input class="input pin" type="password" id="pin" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" autocomplete="new-password" placeholder="New PIN">
+                <button type="submit" class="btn small" id="pin-save">Set PIN</button>
+              </div>
+            </form>
+            <p class="warn-line">Enter your PIN yourself. Never give it to an assistant.</p>
+            <p class="hint">You type this PIN on the approval page. Nothing is posted without it.</p>
+            <p class="note" id="pin-note" role="status"></p>
+          </div>
+        </section>
+
+        <section class="step" id="step-muse" data-done="false">
+          <button type="button" class="step-head" aria-expanded="true" aria-controls="body-muse"><span class="badge" aria-hidden="true">4</span><span class="step-name">4. Muse</span><span class="caret" aria-hidden="true"></span></button>
+          <p class="step-state" id="muse-state"></p>
+          <div class="step-body" id="body-muse">
+            <p class="hint">Ask your Muse agent which highlights are ready and get the approval link. Muse can't post: you approve on the page, with your PIN.</p>
+            <div class="strip" id="muse-secret" hidden>
+              <p class="label">Your Muse key</p>
+              <p class="mono key wrap" id="muse-key"></p>
+              <div class="btns"><button type="button" class="btn small" id="muse-copy">Copy</button></div>
+              <p class="warn-line small">Shown once. Copy it now. You can make a new one, but you can't see this one again.</p>
+              <div class="btns"><button type="button" class="btn small primary" id="muse-done">Done</button></div>
+            </div>
+            <div id="muse-address-box" hidden>
+              <p class="label">Connector address (Bearer key)</p>
+              <div class="status-row"><span class="mono wrap" id="muse-address"></span><span class="btns push"><button type="button" class="btn small" id="muse-address-copy">Copy</button></span></div>
+            </div>
+            <div class="btns">
+              <button type="button" class="btn small primary" id="muse-make">Make a Muse key</button>
+              <button type="button" class="btn small" id="muse-revoke" hidden>Revoke</button>
+            </div>
+            <p class="note" id="muse-note" role="status"></p>
+          </div>
+        </section>
+
+        <section class="step" id="step-accounts" data-done="false">
+          <button type="button" class="step-head" aria-expanded="true" aria-controls="body-accounts"><span class="badge" aria-hidden="true">5</span><span class="step-name">5. Facebook + Instagram</span><span class="caret" aria-hidden="true"></span></button>
+          <p class="step-state" id="accounts-state"></p>
+          <div class="step-body" id="body-accounts">
+            <ul class="rows">
+              <li class="kv"><span class="kv-label">Facebook Page</span><span class="kv-value" id="fb-state">Not connected</span>
+                <span class="btns push"><button type="button" class="btn small primary" id="fb-connect">Connect ↗</button><button type="button" class="btn small" id="fb-disconnect" hidden>Disconnect</button></span></li>
+              <li class="kv"><span class="kv-label">Instagram</span><span class="kv-value" id="ig-state">Comes with your Facebook Page</span>
+                <span class="btns push"><button type="button" class="btn small" id="ig-disconnect" hidden>Disconnect</button></span></li>
+            </ul>
+            <p class="callout" id="accounts-wait" hidden>Finish signing in in the other tab, then come back here. <a id="accounts-link" href="#" target="_blank" rel="noopener noreferrer">Open the sign-in page again ↗</a></p>
+            <div class="btns"><button type="button" class="btn small" id="accounts-check">Check again</button></div>
+            <p class="note" id="accounts-note" role="status"></p>
+          </div>
+        </section>
+
+        <section class="step" id="step-whatsapp" data-done="false" data-optional="true">
+          <button type="button" class="step-head" aria-expanded="true" aria-controls="body-whatsapp"><span class="badge" aria-hidden="true">6</span><span class="step-name">6. WhatsApp</span><span class="badge-tag">OPTIONAL</span><span class="caret" aria-hidden="true"></span></button>
+          <p class="step-state" id="wa-state"></p>
+          <div class="step-body" id="body-whatsapp">
+            <label class="check"><input type="checkbox" id="wa-enabled"> Send me WhatsApp messages</label>
+            <div class="nested" id="wa-more" hidden>
+              <p class="line" id="wa-paired" hidden>Paired with the number ending in <b id="wa-tail-ok"></b></p>
+              <div class="strip" id="wa-pair-box" hidden>
+                <p class="line">Send this code from the phone that should get the messages:</p>
+                <p class="code" id="wa-code"></p>
+                <div class="btns"><a class="btn small primary" id="wa-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Open WhatsApp ↗</a><button type="button" class="btn small" id="wa-sent">I've sent it</button></div>
+                <p class="hint" id="wa-expires"></p>
+              </div>
+              <div class="strip" id="wa-confirm-box" hidden>
+                <p class="line">A code came from the number ending in <b id="wa-tail"></b>. Is that your phone?</p>
+                <div class="btns"><button type="button" class="btn small primary" id="wa-yes">Yes, it's mine</button><button type="button" class="btn small" id="wa-no">No</button></div>
+              </div>
+              <div class="btns"><button type="button" class="btn small" id="wa-pair">Pair my WhatsApp number</button><button type="button" class="btn small" id="wa-test">Send a test message</button></div>
+              <fieldset class="fieldset">
+                <legend class="label">Message me</legend>
+                <label class="check"><input type="checkbox" id="wa-finish"> When a game's clips are ready</label>
+                <label class="check"><input type="checkbox" id="wa-fail"> When a game fails</label>
+                <label class="check"><input type="checkbox" id="wa-publish"> When posts go up</label>
+              </fieldset>
+              <p class="label">Message templates</p>
+              <ul class="tpl-list" id="wa-templates"></ul>
+              <div class="btns"><button type="button" class="btn small" id="wa-tpl-check">Check their status</button><button type="button" class="btn small" id="wa-tpl-submit">Send them for review</button></div>
+            </div>
+            <p class="note" id="wa-note" role="status"></p>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="card" id="step-approvals">
+      <h2>Publishing</h2>
+      <label class="check big"><input type="checkbox" id="approvals"> Let me approve publishing from my phone</label>
+      <p class="hint" id="approvals-why"></p>
+      <div class="nested" id="approvals-more" hidden>
+        <fieldset class="fieldset">
+          <legend class="hint">Tick in advance on the approval page:</legend>
+          <label class="check"><input type="checkbox" id="pref-instagram"> Instagram Reels</label>
+          <label class="check"><input type="checkbox" id="pref-facebook"> Facebook Page Reels</label>
+        </fieldset>
+        <div class="inline-fields">
+          <label class="inline-field"><span class="label">Link expires after</span>
+            <select class="input compact" id="approval-hours"><option value="6">6 hours</option><option value="12">12 hours</option><option value="24">24 hours</option><option value="48">48 hours</option><option value="72">72 hours</option></select></label>
+          <label class="inline-field"><span class="label">Remind me later waits</span>
+            <select class="input compact" id="remind-minutes"><option value="30">30 min</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="240">4 hours</option><option value="480">8 hours</option></select></label>
+        </div>
+      </div>
+      <p class="note" id="approvals-note" role="status"></p>
+    </div>
+
+    <div class="card" id="step-watches">
+      <h2>Watched folders</h2>
+      <p class="hint">Each new video copied into a watched folder becomes a game once it has stopped changing for a minute. Files there are only read.</p>
+      <form class="input-row" id="watch-form" autocomplete="off">
+        <input class="input mono-input" type="text" id="watch-path" placeholder="/watch" spellcheck="false" aria-label="Folder path">
+        <button type="submit" class="btn primary" id="watch-add" disabled>Add</button>
+      </form>
+      <p class="empty" id="watches-empty">No folders yet.</p>
+      <ul class="rows" id="watches"></ul>
+      <p class="note" id="watches-note" role="status"></p>
+    </div>
+
+    <div class="card" id="step-options">
+      <h2>Options</h2>
+      <div class="field">
+        <label class="label" for="opt-mode">Mode</label>
+        <select class="input" id="opt-mode"><option value="basketball">Basketball</option><option value="talk">Talk</option></select>
+        <p class="hint">Basketball follows the ball. Talk keeps the speaker in frame.</p>
+      </div>
+      <div class="field">
+        <label class="label" for="opt-clips">Clips per game</label>
+        <input class="input num-input" type="number" id="opt-clips" min="1" max="12" step="1" inputmode="numeric">
+      </div>
+      <div class="field">
+        <label class="label" for="opt-hint">Teams or players</label>
+        <input class="input" type="text" id="opt-hint" maxlength="200" placeholder="Teams or players (optional)">
+      </div>
+      <label class="check"><input type="checkbox" id="opt-cards"> Title cards <span class="dim">(a title before each clip)</span></label>
+      <p class="hint divided">Changes save as you make them. <span class="sky-text" id="options-saved" hidden>Saved</span></p>
+      <p class="note" id="options-note" role="status"></p>
+    </div>
+  </section>
+
+  <!-- Usage -->
+  <section class="view narrow-768" id="view-usage" aria-labelledby="h-usage" hidden>
+    <header class="page-head"><h1 id="h-usage">Usage</h1></header>
+    <div class="card">
+      <p class="stats" id="usage-stats"></p>
+      <progress class="bar thin" id="usage-bar" max="100" value="0"></progress>
+      <p class="hint">Estimates from Meta's published prices. Meta calls stop once the estimate passes the budget (META_BUDGET_USD).</p>
+    </div>
+    <div class="card">
+      <h2>By model</h2>
+      <table class="table" id="usage-models">
+        <thead><tr><th scope="col">Model</th><th scope="col" class="num">Calls</th><th scope="col" class="num">Frames</th><th scope="col" class="num">Est. cost</th></tr></thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Recent calls</h2>
+      <p class="empty" id="calls-empty" hidden>No calls yet.</p>
+      <table class="table" id="calls">
+        <thead><tr><th scope="col">Time</th><th scope="col">Model</th><th scope="col">What</th><th scope="col" class="num">Cost</th><th scope="col">Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Phone and posting</h2>
+      <ul class="facts" id="usage-phone"></ul>
+    </div>
+    <p class="note bad" id="usage-note" role="status"></p>
+  </section>
+</main>
+</div>
+</body>
+</html>

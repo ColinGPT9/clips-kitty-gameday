@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Clips Kitty Game Day</title>
+  <g stroke="#1c3354" stroke-width="1.5" stroke-linejoin="round">
+    <path d="M9.5 33 L13.5 7.5 L30 19.5 Z" fill="#13243d"/>
+    <path d="M54.5 33 L50.5 7.5 L34 19.5 Z" fill="#13243d"/>
+    <ellipse cx="32" cy="37" rx="25" ry="19.5" fill="#13243d"/>
+  </g>
+  <path d="M15.5 25.5 L16.8 14 L25 20.2 Z" fill="#0ea5e9"/>
+  <path d="M48.5 25.5 L47.2 14 L39 20.2 Z" fill="#0ea5e9"/>
+  <path d="M13.2 42.5 C13.2 32.5 21 30.5 26 32 C28.4 28.6 35.6 28.6 38 32 C43 30.5 50.8 32.5 50.8 42.5 C50.8 50.5 42.5 55.6 32 55.6 C21.5 55.6 13.2 50.5 13.2 42.5 Z" fill="#38bdf8"/>
+  <circle cx="23.5" cy="38" r="5.6" fill="#f1f5f9"/>
+  <circle cx="40.5" cy="38" r="5.6" fill="#f1f5f9"/>
+  <circle cx="24.3" cy="38.9" r="3.5" fill="#0a1628"/>
+  <circle cx="41.3" cy="38.9" r="3.5" fill="#0a1628"/>
+  <circle cx="22.6" cy="36.6" r="1.4" fill="#ffffff"/>
+  <circle cx="39.6" cy="36.6" r="1.4" fill="#ffffff"/>
+  <ellipse cx="18" cy="46" rx="2.6" ry="1.6" fill="#0ea5e9"/>
+  <ellipse cx="46" cy="46" rx="2.6" ry="1.6" fill="#0ea5e9"/>
+  <path d="M30.2 45.2 H33.8 L32 47.4 Z" fill="#0a1628"/>
+  <path d="M28.2 49 Q30.1 50.8 32 49 Q33.9 50.8 35.8 49" fill="none" stroke="#0a1628" stroke-width="1.3" stroke-linecap="round"/>
+</svg>
