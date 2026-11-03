@@ -1122,6 +1122,7 @@
     setText('approvals-why', noRelay ? locked : !set.remote_approvals && why ? why
       : 'Finished games are offered on your phone. Nothing is posted until you approve it there with your PIN.');
     show('approvals-more', !!set.remote_approvals);
+    if (document.activeElement !== $('offer-other')) $('offer-other').checked = set.basketball_only === false;
     const preferred = set.preferred_destinations || [];
     for (const platform of ['instagram', 'facebook']) {
       const input = $('pref-' + platform);
@@ -1424,6 +1425,8 @@
       patchRA({ approval_hours: Number(e.target.value) }, 'approvals-note', 'Saved.')));
     $('remind-minutes').addEventListener('change', (e) => act(e.currentTarget, 'approvals-note', () =>
       patchRA({ remind_minutes: Number(e.target.value) }, 'approvals-note', 'Saved.')));
+    $('offer-other').addEventListener('change', (e) => act(e.currentTarget, 'approvals-note', () =>
+      patchRA({ basketball_only: !e.target.checked }, 'approvals-note', 'Saved.')));
 
     // Watched folders
     $('watch-path').addEventListener('input', () => { $('watch-add').disabled = !$('watch-path').value.trim(); });

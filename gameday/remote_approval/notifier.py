@@ -22,7 +22,7 @@ from gameday.remote_approval import captions, states, store, summary
 from gameday.remote_approval import settings as ra_settings
 from gameday.store import loads
 
-WHERE = "on the dashboard's phone page"
+WHERE = "In the dashboard's Setup"
 
 
 def why_not_offered(config: dict) -> str:
@@ -30,10 +30,10 @@ def why_not_offered(config: dict) -> str:
     dashboard names its switches, or "" when nothing in the settings stops it.
     An offer reaches the phone on WhatsApp or through the owner's Muse agent."""
     if not (config["whatsapp_enabled"] or ra_settings.muse_connected(config)):
-        return ("Nothing was sent to your phone. Connect your Muse agent, or turn on WhatsApp messages "
-                f"{WHERE}.")
+        return f"Nothing was sent to your phone. {WHERE}, make a Muse key or turn on Send me WhatsApp messages."
     if not config["notify_on_finish"]:
-        return f"Nothing was sent to your phone. Turn on When highlights are ready {WHERE}."
+        return (f"Nothing was sent to your phone. {WHERE}, turn on When a game's clips are ready "
+                "(under Send me WhatsApp messages).")
     return ""
 
 

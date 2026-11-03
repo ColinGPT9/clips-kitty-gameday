@@ -478,7 +478,7 @@ def can_enable_remote_approval(db) -> str:
     config = ra_settings.load(db)
     if not ra_settings.muse_connected(config):
         if not config["whatsapp_enabled"]:
-            return "Connect your Muse agent, or turn on WhatsApp notifications, first."
+            return "Make a Muse key, or turn on Send me WhatsApp messages, first."
         if (config["pairing"] or {}).get("state") != "confirmed":
             return "Pair and confirm your WhatsApp number, or connect your Muse agent, first."
     if not config["pin_set"]:

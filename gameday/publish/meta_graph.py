@@ -77,7 +77,8 @@ def classify(code: str, message: str, meta: dict | None = None) -> PublishError:
     if code in ("not_approved", "expired", "not_connected", "not_registered"):
         return PublishError(message)
     if m_code == 190 or code == "token_expired":
-        return AuthRequired(f"Your {platform} connection has expired. Reconnect it on the dashboard's phone page.")
+        return AuthRequired(f"Your {platform} connection has expired. Reconnect it in the dashboard's Setup, "
+                            "under Facebook + Instagram.")
     if m_code == 10 or 200 <= m_code <= 299:
         return AuthRequired(f"{platform} refused the permission this needs. Reconnect the account and "
                             "allow publishing when Meta asks.")

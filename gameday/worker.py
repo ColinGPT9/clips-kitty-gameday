@@ -367,8 +367,8 @@ class Worker:
             return "skipped", "Connect this app to your relay to get its clips on your phone."
         job = self.store.get_job(job_id)
         if config["basketball_only"] and summary.kind_of(loads(job["options"], {})) != "basketball":
-            return "skipped", ("Only basketball games are offered on your phone. Turn on Offer other videos "
-                               f"too {notifier.WHERE}.")
+            return "skipped", ("Only basketball games are offered on your phone. "
+                               f"{notifier.WHERE}, tick Offer other videos too under Publishing.")
         if config["muse_captions"] or config["muse_summary"]:
             progress("captions", 0.2, "Muse Spark is writing the captions")
         review_id = notifier.on_job_finished(self.store, job, "done", meta=meta)
