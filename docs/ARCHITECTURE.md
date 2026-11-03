@@ -32,15 +32,13 @@ flowchart TD
     C -->|through the relay| G
     G --> IG
     G --> FB
-    classDef model fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
-    classDef metaapp fill:#E7F0FF,stroke:#0866FF,color:#0B1F44
-    class V,S,M model
-    class MU,G,IG,FB metaapp
+    classDef meta fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
+    class V,S,M,MU,G,IG,FB meta
 ```
 
-**Solid blue: Meta's models** (Muse Voice, Muse Spark, SAM 3.1), the only AI
-this app calls. **Light blue: Meta's apps and APIs** (Muse, the Graph API,
-Instagram, Facebook).
+**Blue: Meta's models and products.** The models are Muse Voice, Muse Spark
+and SAM 3.1, the only AI this app calls. The products are Muse, the Graph
+API, Instagram and Facebook.
 
 ## The parts
 
