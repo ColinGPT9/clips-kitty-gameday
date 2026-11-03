@@ -564,9 +564,11 @@ def cancel_from_app(db, review_id: int) -> dict:
     if review is None:
         raise KeyError(review_id)
     if review["state"] == states.PUBLISH_QUEUED:
-        commands.cancel_queued(db, review_id)
+        # Refused before anything changes: an upload already started can't be
+        # stopped, and the rest stay queued with it.
         if commands.running_jobs(db, review_id):
             raise states.IllegalMove(review["state"], states.CANCELLED)
+        commands.cancel_queued(db, review_id, where="the app")
     review = store.move(db, review_id, states.CANCELLED, actor="desktop", detail="cancelled in the app")
     relay = client(db)
     if relay is not None and review["approval_id"]:

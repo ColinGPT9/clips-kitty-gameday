@@ -350,6 +350,22 @@ def test_an_answer_naming_clips_it_was_not_given_is_cleaned():
 # ---- decisions from the phone ----------------------------------------------------------
 
 
+def test_a_cancel_refused_while_an_upload_runs_changes_nothing(db, on):
+    review, _ = offered(db, on)
+    ids = [c["clip_id"] for c in review["clips"][:2]]
+    commands.handle(db, approve_command(review, clips=ids, platforms=["instagram"]), secret=SECRET)
+    running = db.claim_next_publish_job()
+    with pytest.raises(states.IllegalMove):
+        service.cancel_from_app(db, review["id"])
+    jobs = commands.jobs_for_review(db, review["id"])
+    assert sorted(j["status"] for j in jobs) == ["queued", "running"]  # the other clip still goes
+    db.finish_publish_job(running["id"], "done")
+    service.cancel_from_app(db, review["id"])  # nothing uploading now: the rest is stopped
+    stopped = [j for j in commands.jobs_for_review(db, review["id"]) if j["id"] != running["id"]]
+    assert [(j["status"], j["error"]) for j in stopped] == [("cancelled", "Cancelled from the app.")]
+    assert store.get_review(db, review["id"])["state"] == states.CANCELLED
+
+
 def test_an_approval_queues_one_publish_per_clip(db, on):
     review, _ = offered(db, on)
     ids = [c["clip_id"] for c in review["clips"][:2]]
