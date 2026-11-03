@@ -25,7 +25,7 @@ import requests
 from conftest import ENROLL_KEY, VIDEO_BYTES
 from platform_fakes import RELAY_DIR, FakeMeta, Muse, Phone, csrf_of, ffmpeg_ok, finished_job, make_video, node_ok
 
-from gameday.remote_approval import commands, notifier, publishing, service, states, store
+from gameday.remote_approval import captions, commands, notifier, publishing, service, states, store
 from gameday.remote_approval import settings as ra_settings
 
 PIN = "4826"
@@ -157,6 +157,34 @@ def test_a_finished_game_goes_from_whatsapp_to_instagram_and_facebook(pc):
     status, html = phone.open(token)
     assert all(p["permalink"] in html for p in posts)
     assert 'name="pin"' not in html
+
+
+def test_the_credit_line_is_on_the_approval_page_and_in_every_post(pc):
+    """What the page shows is what goes up: each caption ends with the
+    credit line, on the page and in the posts Instagram and Facebook get."""
+    phone, db = pc["phone"], pc["db"]
+    credit = ("Game footage: DVIDS (public domain). The appearance of U.S. Department of War (DoW) visual "
+              "information does not imply or constitute DoW endorsement.")
+    db.save_job_settings({"caption_credit": credit})
+    before = len(phone.state()["posts"])
+    review_id = notifier.on_job_finished(db, finished_job(db, pc["dir"], title="Blue vs Navy"), "done")
+    pc["tick"]()
+    review = store.get_review(db, review_id)
+    token = phone.link_token(phone.last_message())
+    _, html = phone.open(token)
+    assert html.count(f"#highlights\n\n{credit}") == 2 * len(review["clips"])  # Instagram's and Facebook's
+    first = review["clips"][0]["clip_id"]
+    status, html = phone.submit(token, [
+        ("csrf", csrf_of(html)), ("action", "approve"), ("clip", str(first)),
+        ("platform", "instagram"), ("platform", "facebook"), ("confirm", "yes"), ("pin", PIN),
+    ])
+    assert status == 200 and "Waiting for your PC" in html
+    assert pc["tick"]() == 1 and pc["publish_all"]() == 1
+    posts = phone.state()["posts"][before:]
+    offered = captions.texts_for(review, db.get_clip(first), review["clips"][0])
+    assert {p["platform"]: p["caption"] for p in posts} == {"instagram": offered["instagram"],
+                                                            "facebook": offered["facebook"]}
+    assert all(p["caption"].endswith(f"#basketball #highlights\n\n{credit}") for p in posts)
 
 
 def test_an_approval_made_while_the_pc_is_off_waits_for_it(pc):
