@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -57,6 +58,27 @@ def test_the_title_card_shows_first_and_then_fades(tmp_path):
     band = pixel(out, 0.5, xy=(540, 330))
     later = pixel(out, 4.0, xy=(540, 330))
     assert band.sum() < later.sum() - 100  # the dark band is there at first, gone later
+
+
+def test_a_relative_work_folder_still_renders_a_titled_panning_clip(tmp_path, monkeypatch):
+    """The default DATA_DIR is relative; ffmpeg runs inside tmp, so the card must not be looked up twice."""
+    src = make_video(tmp_path / "rel.mp4", "testsrc2=size=1280x720:rate=30", 4).resolve()
+    monkeypatch.chdir(tmp_path)
+    tmp = Path("data") / "media" / "jobs" / "1" / "tmp"
+    tmp.mkdir(parents=True)
+    left = np.zeros(90)
+    left[45:] = 1.0
+    out = render.render(src, media.probe(src), 0.0, 3.0, left, tmp.parent / "clip_01.mp4", tmp, title="Big three",
+                        category="threes")
+    assert out.is_absolute() and media.probe(out).width == 1080
+    assert (tmp / "clip_01_card.png").is_file()
+
+
+def test_the_default_data_dir_is_absolute(tmp_path, monkeypatch):
+    from gameday.config import Config
+
+    monkeypatch.chdir(tmp_path)
+    assert Config.from_env({}).data_dir == (tmp_path / "data").resolve()
 
 
 def test_a_silent_60fps_video_gets_30fps_and_a_silent_track(tmp_path):

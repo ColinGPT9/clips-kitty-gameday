@@ -63,7 +63,7 @@ class Config:
 
         port = int(_number(env, "PORT", 8080, low=1, high=65535))
         return cls(
-            data_dir=Path(text("DATA_DIR", "data")).expanduser(),
+            data_dir=Path(text("DATA_DIR", "data")).expanduser().resolve(),
             host=text("HOST", "127.0.0.1"),
             port=port,
             password=str(env.get("GAMEDAY_PASSWORD", "") or ""),

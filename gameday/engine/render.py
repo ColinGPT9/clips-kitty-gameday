@@ -145,6 +145,9 @@ def title_card(title: str, category: str, out: Path) -> Path:
 def render(source: Path, info: MediaInfo, start_s: float, end_s: float, left_share: np.ndarray, out: Path,
            tmp: Path, *, title: str = "", category: str = "", timeout: float | None = 1800) -> Path:
     """The clip [start_s, end_s] of `source` as a 1080x1920 H.264 + AAC MP4 at `out`."""
+    # ffmpeg runs with cwd=tmp (the sendcmd file is named relative to it), so every path
+    # handed to it must be absolute, or a relative DATA_DIR would be looked up twice.
+    tmp, source, out = Path(tmp).resolve(), Path(source).resolve(), Path(out).resolve()
     seconds = max(0.1, end_s - start_s)
     ww, wh, top, pans = window_px(info.width, info.height)
     xs = left_pixels(left_share, info.width, ww) if pans else np.zeros(1, dtype=int)
