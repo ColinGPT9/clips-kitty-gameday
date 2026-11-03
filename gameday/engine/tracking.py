@@ -160,7 +160,7 @@ def pick_ball(seg: Segmentation, f: BallFilter = DEFAULT_FILTER) -> Track:
     return Track(x=x, y=y, found=~np.isnan(x), static_ids=still)
 
 
-def players_x(seg: Segmentation | None, n: int, *, min_height: float = 0.10,
+def players_x(seg: Segmentation | None, n: int, *, min_height: float = 0.06,
               min_confidence: float = 0.3) -> np.ndarray:
     """The players' middle (median centre of the people big enough to be on the court) per frame."""
     out = np.full(n, np.nan)

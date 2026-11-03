@@ -21,6 +21,10 @@ PART_S = 20.0
 NEEDS_PLAYERS = 0.6  # below this ball coverage, SAM is also asked for the players
 CUTAWAY_SHARE = 0.15  # a shot with the ball in fewer of its frames is a cutaway
 CUT_THRESHOLD = 0.35
+# Where the ball is missing, the window follows the players. "basketball player" finds the players on the
+# court and not the crowd ("person" found both, and took six times as long); 3 frames a second is plenty.
+PLAYERS_NOUN = "basketball player"
+PLAYERS_FPS = 3.0
 
 
 @dataclass
@@ -71,6 +75,24 @@ def segment(meta: MetaAPI, proxy: Path, facts: VideoFacts, noun: str, *, job_id:
                         boxes=boxes)
 
 
+def players_pass(meta: MetaAPI, work: ClipWork, *, source: Path, tmp: Path, job_id: int | None) -> Segmentation:
+    """SAM 3.1 on a 3 fps proxy of the same span, its boxes moved onto the ball proxy's frames."""
+    assert work.facts is not None
+    ws, we = work.window
+    proxy = ff.make_proxy(source, tmp / f"clip_{work.rank:02d}_players.mp4", start=ws, seconds=we - ws,
+                          fps=PLAYERS_FPS)
+    facts = video_facts(proxy)
+    seg = segment(meta, proxy, facts, PLAYERS_NOUN, job_id=job_id, tmp=tmp)
+    work.sam_frames += seg.frames
+    step = (work.facts.fps or 10.0) / (facts.fps or PLAYERS_FPS)
+    scale = work.facts.width / facts.width if facts.width else 1.0
+    last = max(0, work.facts.frames - 1)
+    boxes = [replace(b, frame=min(last, int(round(b.frame * step))), left=b.left * scale, top=b.top * scale,
+                     right=b.right * scale, bottom=b.bottom * scale) for b in seg.boxes]
+    return Segmentation(noun=PLAYERS_NOUN, width=work.facts.width, height=work.facts.height,
+                        frames=work.facts.frames, fps=work.facts.fps, boxes=boxes)
+
+
 def track_clip(work: ClipWork, *, source: Path, source_size: tuple[int, int], duration_s: float, tmp: Path,
                options: PipelineOptions, meta: MetaAPI | None, job_id: int | None,
                sents: list[moments.Sentence], should_stop: Callable[[], bool]) -> ClipWork:
@@ -110,8 +132,7 @@ def track_clip(work: ClipWork, *, source: Path, source_size: tuple[int, int], du
             share = tracking.ball_share(ball, work.facts.fps, work.to_proxy(rough[0]), work.to_proxy(rough[1]))
             if share is not None and share < NEEDS_PLAYERS:
                 try:
-                    work.people = segment(meta, work.proxy, work.facts, "person", job_id=job_id, tmp=tmp)
-                    work.sam_frames += work.people.frames
+                    work.people = players_pass(meta, work, source=source, tmp=tmp, job_id=job_id)
                 except (MetaError, MediaError) as exc:
                     log.warning("SAM 3.1 players on %s failed: %s", name, exc)
                     work.warnings.append(f"SAM 3.1 couldn't find the players in {name} ({exc}).")

@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 
 MIN_VIDEO_S = 20.0
 SAM_AT_ONCE = 3
-SPARK_MAX_TOKENS = 6000
+SPARK_MAX_TOKENS = 8000  # the client adds room for Muse Spark's reasoning
 
 
 def _why(exc: Exception) -> str:
@@ -217,7 +217,8 @@ class _Run:
         thing = "the speaker" if self.options.mode == "talk" else "the ball"
         self.say("sam", 0.0, f"SAM 3.1 is following {thing}")
         done = 0
-        with ThreadPoolExecutor(max_workers=SAM_AT_ONCE, thread_name_prefix="sam") as pool:
+        pool = ThreadPoolExecutor(max_workers=SAM_AT_ONCE, thread_name_prefix="sam")
+        try:
             running: set[Future] = set()
             for work in works:
                 running.add(pool.submit(follow.track_clip, work, source=self.source,
@@ -231,9 +232,10 @@ class _Run:
                     done += 1
                     self.say("sam", done / max(1, total), f"Following {thing} in clip {done} of {total}")
                 if self._should_stop():
-                    for future in running:
-                        future.cancel()
                     raise JobCancelled("Stopped")
+        finally:
+            # On a cancel, don't wait for SAM calls already on the wire: their answers are dropped.
+            pool.shutdown(wait=False, cancel_futures=True)
         for work in works:
             self.sam_frames += work.sam_frames
             for text in work.warnings:

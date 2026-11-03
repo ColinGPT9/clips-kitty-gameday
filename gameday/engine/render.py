@@ -209,12 +209,13 @@ def debug_image(source: Path, at_s: float, out: Path, tmp: Path, *, window_left:
     if ball is not None:
         draw.rectangle([ball[0] * w - 3, ball[1] * h - 3, ball[2] * w + 3, ball[3] * h + 3], outline=(255, 30, 30),
                        width=4)
-    caption = f"{at_s:.1f} s   red: SAM 3.1 ball   green: 9:16 window"
+    caption = f"{at_s:.1f} s   red: SAM 3.1 ball   yellow: players   green: 9:16 window"
     if note:
-        caption += f"   {note}"
+        caption += f"
+{note}"
     face = font(max(12, h // 32))
-    box = draw.textbbox((10, 8), caption, font=face)
+    box = draw.multiline_textbbox((10, 8), caption, font=face)
     draw.rectangle([box[0] - 6, box[1] - 4, box[2] + 6, box[3] + 4], fill=(0, 0, 0))
-    draw.text((10, 8), caption, font=face, fill=(255, 255, 255))
+    draw.multiline_text((10, 8), caption, font=face, fill=(255, 255, 255))
     img.save(out, quality=88)
     return out

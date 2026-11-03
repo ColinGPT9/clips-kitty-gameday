@@ -42,7 +42,8 @@ def test_chat_json_sends_a_strict_schema_and_records_the_tokens(fakes):
     assert call["headers"]["Authorization"] == f"Bearer {KEY}"
     assert call["headers"]["User-Agent"] == "clips-kitty-gameday/0.1"
     body = call["json"]
-    assert body["model"] == "muse-spark-1.3" and body["max_tokens"] == 500 and body["temperature"] == 0.1
+    assert body["model"] == "muse-spark-1.3" and body["temperature"] == 0.1
+    assert body["max_tokens"] == 500 + client.spark_reasoning_tokens and body["reasoning_effort"] == "low"
     assert body["response_format"] == {"type": "json_schema",
                                        "json_schema": {"name": "check", "strict": True, "schema": SCHEMA}}
     [record] = ledger.calls

@@ -36,11 +36,15 @@ def spark_usage(usage: dict | None) -> dict:
         except (TypeError, ValueError):
             return 0
 
-    return {
+    out = {
         "prompt_tokens": count(usage.get("prompt_tokens")),
         "cached_tokens": count(details.get("cached_tokens")),
         "completion_tokens": count(usage.get("completion_tokens")),
     }
+    done = usage.get("completion_tokens_details")
+    if isinstance(done, dict) and done.get("reasoning_tokens") is not None:
+        out["reasoning_tokens"] = count(done.get("reasoning_tokens"))  # part of completion_tokens
+    return out
 
 
 def estimate_spark_tokens(messages: list[dict]) -> int:

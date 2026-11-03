@@ -66,8 +66,8 @@ ANSWER = {"moments": [
 
 
 class FakeMeta:
-    def __init__(self, *, sam_fails=False, spark_fails=False):
-        self.sam_fails, self.spark_fails = sam_fails, spark_fails
+    def __init__(self, *, sam_fails=False, spark_fails=False, no_ball=False):
+        self.sam_fails, self.spark_fails, self.no_ball = sam_fails, spark_fails, no_ball
         self.calls: list[str] = []
         self.lock = threading.Lock()
 
@@ -95,8 +95,13 @@ class FakeMeta:
         facts = video_facts(video)
         boxes = []
         for k in range(facts.frames):
-            x = facts.width * (0.5 + 0.3 * math.sin(k / 15))
-            boxes.append(Box(frame=k, object_id=1, left=x - 6, top=150, right=x + 6, bottom=162, confidence=0.85))
+            if noun == "basketball player":  # three players standing on the right
+                boxes += [Box(frame=k, object_id=j, left=430 + 40 * j, top=120, right=460 + 40 * j, bottom=200,
+                              confidence=0.8) for j in range(3)]
+            elif not self.no_ball:
+                x = facts.width * (0.5 + 0.3 * math.sin(k / 15))
+                boxes.append(Box(frame=k, object_id=1, left=x - 6, top=150, right=x + 6, bottom=162,
+                                 confidence=0.85))
         return Segmentation(noun=noun, width=facts.width, height=facts.height, frames=facts.frames, fps=facts.fps,
                             boxes=boxes)
 
@@ -106,7 +111,7 @@ class FakeMeta:
 
 def run(game, work, meta, *, stop=lambda: False, **opts):
     seen = []
-    options = PipelineOptions(max_clips=2, min_clip_s=8.0, max_clip_s=16.0, **opts)
+    options = PipelineOptions(**{"max_clips": 2, "min_clip_s": 8.0, "max_clip_s": 16.0, **opts})
     result = pipeline.run(9, game, work, options, meta, lambda stage, share, msg: seen.append((stage, share, msg)),
                           stop)
     return result, seen
@@ -161,6 +166,23 @@ def test_meta_failures_become_warnings_not_errors(game, tmp_path):
     assert any("Muse Spark failed" in w for w in result.warnings)
     assert any("SAM 3.1 failed" in w for w in result.warnings)
     assert "spark" in result.stats["fallbacks"]
+
+
+def test_talk_mode_follows_the_speaker_with_one_sam_pass(game, tmp_path):
+    meta = FakeMeta()
+    result, _ = run(game, tmp_path, meta, mode="talk", max_clips=1, title_cards=False)
+    [clip] = result.clips
+    assert clip.follow.source == "speaker" and clip.follow.note.startswith("Followed the speaker")
+    assert meta.calls.count("sam:person") == 1 and "sam:basketball" not in meta.calls
+
+
+def test_without_the_ball_the_window_follows_the_players(game, tmp_path):
+    meta = FakeMeta(no_ball=True)
+    result, _ = run(game, tmp_path, meta, max_clips=1, title_cards=False)
+    [clip] = result.clips
+    assert clip.follow.source == "players" and clip.follow.ball_coverage == 0.0
+    assert meta.calls.count("sam:basketball player") == 1
+    assert result.stats["sam_frames"] > 0
 
 
 def test_a_stop_request_cancels_and_cleans_up(game, tmp_path):

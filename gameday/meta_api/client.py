@@ -43,6 +43,7 @@ VOICE_TIMEOUT = (20, 600)
 SAM_MAX_BYTES = 6_000_000  # a bigger video goes in parts (the caller splits it)
 VOICE_AT_ONCE = 3
 RETRY_WAIT_S = 2.0
+SPARK_REASONING_TOKENS = 4000
 RETRY_AFTER_MAX_S = 30.0
 
 NAMES = {MODEL_VOICE: "Muse Voice", MODEL_SPARK: "Muse Spark", MODEL_SAM: "SAM 3.1"}
@@ -103,6 +104,11 @@ class MetaClient:
         self._lock = threading.Lock()
         self._spent: dict[str, float] = {}
         self.voice_piece_s = voice.PIECE_S
+        # Extra fields for every Muse Spark request. Muse Spark reasons before it answers, and at its
+        # default effort a 1,000-token prompt used 6,000 tokens without finishing; "low" finished.
+        self.spark_options: dict = {"reasoning_effort": "low"}
+        # Its reasoning counts against max_tokens, so this much is added to what the caller asked for.
+        self.spark_reasoning_tokens = SPARK_REASONING_TOKENS
 
     def __repr__(self) -> str:  # never the key
         return f"MetaClient(base_url={self._base!r})"
@@ -208,7 +214,7 @@ class MetaClient:
 
     def test_key(self) -> None:
         self._spark([{"role": "user", "content": "Reply with the word OK."}], purpose="test", job_id=None,
-                    max_tokens=16, temperature=0.0, parse=lambda text, finish_reason, refusal: None)
+                    max_tokens=16, temperature=0.0, parse=lambda text, finish_reason, refusal: None, headroom=False)
 
     def spent_by_model(self) -> dict[str, float]:
         """Estimated USD of this client's successful calls so far, per model."""
@@ -218,9 +224,12 @@ class MetaClient:
     # --- the plumbing ---------------------------------------------------------
 
     def _spark(self, messages: list[dict], *, purpose: str, job_id: int | None, max_tokens: int,
-               temperature: float, parse: Callable[[str, str, str], Any], response_format: dict | None = None):
-        body: dict = {"model": MODEL_SPARK, "messages": messages, "max_tokens": int(max_tokens),
-                      "temperature": float(temperature)}
+               temperature: float, parse: Callable[[str, str, str], Any], response_format: dict | None = None,
+               headroom: bool = True):
+        if headroom:
+            max_tokens = int(max_tokens) + int(self.spark_reasoning_tokens)
+        body: dict = {**self.spark_options, "model": MODEL_SPARK, "messages": messages,
+                      "max_tokens": int(max_tokens), "temperature": float(temperature)}
         if response_format is not None:
             body["response_format"] = response_format
         estimate = costs.spark_cost(costs.estimate_spark_tokens(messages), 0, int(max_tokens))
