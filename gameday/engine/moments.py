@@ -291,7 +291,7 @@ def fallback_moments(loud: loudness_mod.Loudness, *, duration_s: float, options:
     picks = []
     for p in peaks:
         play = loudness_mod.onset(loud, p.t) if options.mode != "talk" else p.t
-        picks.append(Moment(start_s=max(0.0, play - 10.0), end_s=min(duration_s, play + 6.0), play_s=play,
+        picks.append(Moment(start_s=max(0.0, play - 10.0), end_s=min(duration_s, play + 4.0), play_s=play,
                             category="big_moment", label="", title="", score=round(min(95.0, 40.0 + 12.0 * p.z), 1),
                             source="loudness"))
     if not picks:  # no sound at all: spread the clips through the video
