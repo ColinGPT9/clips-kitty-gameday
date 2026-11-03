@@ -25,8 +25,9 @@
   const PLATFORM_LABELS = { instagram: 'Instagram Reels', facebook: 'Facebook Page Reels' };
   const OFFER_WORDS = {
     READY_FOR_REVIEW: ['Getting ready', ''],
-    NOTIFICATION_PENDING: ['Ready for Muse', 'sky'],
-    NOTIFICATION_SENT: ['Sent to your phone', 'sky'],
+    // Nothing is pushed to the phone: the relay keeps the offer until Muse is asked for it.
+    NOTIFICATION_PENDING: ['Going to the relay', 'sky'],
+    NOTIFICATION_SENT: ['Ready: ask Muse', 'sky'],
     AWAITING_APPROVAL: ['Waiting for approval', 'caution'],
     DEFERRED: ['Remind me later', 'caution'],
     APPROVED: ['Approved, posting…', 'sky'],
@@ -919,9 +920,10 @@
     if (review.state === 'NOTIFICATION_PENDING' && review.error) [word, tone] = ['Not delivered', 'bad'];
     const platforms = (review.decision && review.decision.platforms && review.decision.platforms.length)
       ? review.decision.platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ') : '';
-    const line2 = [plural((review.clips || []).length, 'clip'), platforms, `sent ${ago(review.created_at)}`];
+    const line2 = [plural((review.clips || []).length, 'clip'), platforms, `offered ${ago(review.created_at)}`];
     if (OPEN_OFFERS.includes(review.state) && review.expires_at) line2.push(`link works until ${at(review.expires_at)}`);
-    if (review.state === 'DEFERRED' && review.remind_at) line2.push(`reminder at ${at(review.remind_at)}`);
+    // Nothing reminds anyone at remind_at: the offer is only put aside until then.
+    if (review.state === 'DEFERRED' && review.remind_at) line2.push(`put aside until ${at(review.remind_at)}`);
     const buttons = [];
     const button = (what, text) => h('button', { type: 'button', class: 'btn small', 'data-act': 'offer', 'data-what': what, 'data-id': review.id, text });
     if (review.can_cancel) buttons.push(button('cancel', 'Cancel'));
