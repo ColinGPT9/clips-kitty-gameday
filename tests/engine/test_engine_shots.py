@@ -74,6 +74,26 @@ def test_a_wipe_counts_where_it_begins_and_where_it_ends():
     assert cuts[-1] >= t[60 + 14] - 0.2  # and the next one starts after it
 
 
+def test_a_wipe_with_one_sharp_frame_counts_from_where_it_began():
+    # A logo sweeps in from the right edge, and halfway it jumps across in one frame, sharply enough to
+    # pass for a hard cut (frame 65). The cut is where the sweep began, so no frame of the logo shows.
+    before, after = court(60), logo(30)
+    sweep = []
+    for share in (0.07, 0.14, 0.22, 0.30, 0.38, 0.80, 0.88, 0.95):
+        frame = before[-1].copy()
+        edge = int(round(W * (1 - share)))
+        frame[:, edge:] = after[0][:, edge:]
+        sweep.append(frame)
+    frames = np.concatenate([before, np.stack(sweep), after])
+    t = times(len(frames))
+    cuts = shots.find(frames, t)
+    assert t[60] - (shots.SWEEP_LEAD + 1) / FPS <= cuts[0] <= t[60] + 0.01
+    assert len(cuts) == 2 and cuts[1] >= t[67] - 0.01  # and the next shot starts once the logo settled
+    # A plain hard cut is still found on the new shot's first frame.
+    plain = np.concatenate([before, after])
+    assert shots.find(plain, times(len(plain))) == [pytest.approx(times(len(plain))[60])]
+
+
 @pytest.mark.media
 def test_the_cuts_are_found_in_the_game_itself_to_the_frame(tmp_path, need_ffmpeg):
     video = tmp_path / "two_shots.mp4"

@@ -11,7 +11,11 @@ a clip can end on the frame before a cut:
   after it don't go back to the ones before.
 * A wipe, or a dissolve into another scene, changes the colours a lot over
   half a second without a hard cut. It counts as two cuts, where it begins
-  and where it ends, so a clip ends before it and starts after it.
+  and where it ends, so a clip ends before it and starts after it. A wipe
+  with one frame sharp enough to pass for a hard cut is still a wipe: when
+  the colours were already changing in the frames before that frame, or
+  keep changing after it, it counts where they began to change and where
+  they settled.
 
 A dissolve between two cameras on the same court changes too little to be
 found, and it doesn't end a play.
@@ -32,6 +36,9 @@ JUMP_OVER_BASELINE = 3.0  # and by this many times the baseline
 MIN_COLOUR_CHANGE = 0.12  # and its colours by at least this much (histogram distance, 0..1)
 WIPE_FRAMES = 8  # a wipe is judged between frames this far either side of its middle
 MIN_WIPE_CHANGE = 0.6
+SWEEP_COLOUR = 0.05  # a frame whose colours changed this much from the one before is mid-wipe (inside a shot,
+# frames change theirs by about 0.01 to 0.04)
+SWEEP_LEAD = 2  # a wipe sweeps in from an edge: its first frame or two change too little to measure
 MERGE_S = 0.2  # cuts closer together than this are one
 
 
@@ -43,6 +50,20 @@ def _histograms(frames: np.ndarray) -> np.ndarray:
     counts = np.bincount((bins.reshape(n, -1) + 64 * np.arange(n)[:, None]).ravel(), minlength=64 * n)
     hist = counts.reshape(n, 64).astype(np.float64)
     return hist / np.maximum(1.0, hist.sum(axis=1, keepdims=True))
+
+
+def _sweep(colour: np.ndarray, i: int) -> tuple[int, int]:
+    """Around a hard cut on frame i: the first frame whose colours had begun to change (i, unless a
+    wipe was already sweeping in), and the first frame after i whose colours had stopped changing
+    (i + 1, unless the wipe swept on). colour[j] is frame j's change from frame j - 1."""
+    reach = 2 * WIPE_FRAMES
+    began = i
+    while began - 1 >= max(1, i - reach) and colour[began - 1] >= SWEEP_COLOUR:
+        began -= 1
+    settled = i + 1
+    while settled < min(len(colour), i + 1 + reach) and colour[settled] >= SWEEP_COLOUR:
+        settled += 1
+    return began, settled
 
 
 def find(frames: np.ndarray, times: np.ndarray) -> list[float]:
@@ -67,7 +88,14 @@ def find(frames: np.ndarray, times: np.ndarray) -> list[float]:
         if float(np.abs(gray[min(n - 1, i + 3)] - gray[max(0, i - 4)]).mean()) < 0.5 * jump[i]:
             continue  # a flash, or the end of one: the picture goes back to what it was
         hard.append(int(i))
-    found = [float(times[i]) for i in hard]
+    found = []
+    for i in hard:
+        # A wipe already sweeping in began a little before its first measured change; one that sweeps
+        # on after the sharp frame gives way to the new shot once its colours settle.
+        began, settled = _sweep(colour, i)
+        first = float(times[max(0, began - SWEEP_LEAD)] if began < i else times[i])
+        last = float(times[min(n - 1, settled)] if settled > i + 1 else times[i])
+        found += [first] if last == first else [first, last]
 
     k = WIPE_FRAMES
     if n > 2 * k:
