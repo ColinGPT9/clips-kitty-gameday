@@ -211,6 +211,8 @@ def hashtags(values, *, limit: int = 6) -> list[str]:
     return out[:limit]
 
 
+#: The label engine/moments.py gives a clip picked by loudness alone (no Muse Spark).
+_ENGINE_NOTE = re.compile(r"Loud moment at \d+:\d{2}")
 _TAG = re.compile(r"#\w+")
 _TRAILING_TAGS = re.compile(r"(?:[\s,;]*#\w+)+[\s.]*$")
 
@@ -258,8 +260,10 @@ def texts_for(review: dict, clip_row, entry: dict) -> dict:
             "facebook": with_tags(mine["facebook"], tags),
             "source": "muse_spark",
         }
-    title = (entry.get("title") or entry.get("label") or fallback).strip()
     label = str(entry.get("label") or "").strip()
+    if _ENGINE_NOTE.fullmatch(label):
+        label = ""  # the engine's own note on a loudness pick, never words for viewers
+    title = (str(entry.get("title") or "").strip() or label or fallback).strip()
     description = label if label and label.lower() != title.lower() else ""
     tags = hashtags([*added, *(["highlights"] if kind == "basketball" else [])], limit=8)
     body = "\n\n".join(p for p in (title, description, " ".join(tags)) if p)

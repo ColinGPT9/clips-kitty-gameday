@@ -266,6 +266,15 @@ def test_a_pipeline_that_is_not_a_games_own_offers_a_video_in_plain_words(db, on
     assert "basketball" not in json.dumps(made).lower()
 
 
+def test_without_a_key_the_engines_loudness_note_is_never_posted(db, on):
+    review = {"captions": {}, "fingerprint": "f", "summary": {"kind": "basketball"}}
+    entry = {"clip_id": 1, "title": "Big moment 1", "label": "Loud moment at 0:28"}
+    made = captions.texts_for(review, None, entry)
+    assert made["instagram"] == made["facebook"] == "Big moment 1\n\n#basketball #highlights"
+    told = captions.texts_for(review, None, {**entry, "label": "Poster dunk"})
+    assert told["instagram"] == "Big moment 1\n\nPoster dunk\n\n#basketball #highlights"
+
+
 def test_a_relay_that_is_down_is_retried_later_and_a_refusal_is_not(db, on):
     job = finished_job(db, on)
     review_id = notifier.on_job_finished(db, job, "done")
