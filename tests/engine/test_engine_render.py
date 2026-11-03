@@ -97,6 +97,23 @@ def test_a_portrait_video_is_centred_without_panning(tmp_path):
     assert not (tmp_path / "tall_clip.cmd").exists()
 
 
+@pytest.mark.parametrize("turn, size", [(90, (360, 640)), (270, (360, 640)), (180, (640, 360))])
+def test_a_phone_video_stored_sideways_is_probed_as_ffmpeg_decodes_it(tmp_path, turn, size):
+    # Stored 640x360 and tagged to be shown turned, as phones record upright video.
+    wide = make_video(tmp_path / "wide.mp4", "testsrc2=size=640x360:rate=30", 3)
+    src = tmp_path / f"phone_{turn}.mp4"
+    subprocess.run([media.FFMPEG, "-v", "error", "-y", "-display_rotation", str(turn), "-i", str(wide), "-c", "copy",
+                    str(src)], check=True)
+    info = media.probe(src)
+    assert (info.width, info.height) == size
+    left = np.zeros(60)
+    left[30:] = 1.0
+    out = render.render(src, info, 0.0, 2.0, left, tmp_path / f"phone_{turn}_clip.mp4", tmp_path)
+    assert (media.probe(out).width, media.probe(out).height) == (1080, 1920)
+    # Upright, the whole width fits the 9:16 frame: nothing to pan.
+    assert (tmp_path / f"phone_{turn}_clip.cmd").exists() == (turn == 180)
+
+
 def test_thumbnail_and_debug_image(tmp_path):
     src = make_video(tmp_path / "game.mp4", "testsrc2=size=1280x720:rate=30", 4)
     out = render.render(src, media.probe(src), 0.0, 3.0, np.full(90, 0.2), tmp_path / "clip_02.mp4", tmp_path)
