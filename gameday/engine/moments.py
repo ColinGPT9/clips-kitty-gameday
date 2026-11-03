@@ -13,8 +13,13 @@ to the owner's rules:
   announcer says before it, even mid-sentence. Only in one court shot does
   the talk decide: it stops before a sentence begun more than 5.5 s after
   the play (2.5 s after a block or a steal). Nothing of the next scene
-  shows at the end. A cut that comes early may leave a clip shorter than the
-  minimum length, but not under 6 s.
+  shows at the end.
+* A cut that comes early may leave a clip shorter than the minimum length,
+  but never under 6 s: the lead-up opens on the shot before after all (at
+  least 2 s of it). A clip that still can't reach 6 s without crossing a
+  wipe or running past its cut isn't made (NoClip), nor is one whose play
+  time falls in a replay: the clip is of the live play, and a replay is no
+  guide to where that was.
 
 Which shots are cutaways (no ball, or the ball big in a close-up) only SAM
 3.1 can tell; without it, only the cuts are known.
@@ -45,6 +50,7 @@ FLASH_S = 2.0  # an opening shot shorter than this, before a cut, is skipped
 TRANSITION_S = 0.8  # a "shot" shorter than this between two cuts is a wipe or a dissolve
 LATE_PLAY_S = 2.5  # a play time this far into a cutaway is the call heard over it: the play came before
 EVIDENCE_LAG_S = 2.0  # a play time this long after its call began may be a late guess
+REPLAY_S = 12.0  # a stretch this short between two wipes is a replay (live play runs for minutes between them)
 
 PLAIN_TITLES = {
     "clutch": "Clutch play", "dunks": "Huge dunk", "threes": "Big three", "blocks": "Big block",
@@ -83,6 +89,10 @@ class Sentence:
     start_s: float
     end_s: float
     text: str
+
+
+class NoClip(Exception):
+    """The rules can't cut this play into a clip; the message says why, for the run's warnings."""
 
 
 # --- what Muse Spark is asked ---------------------------------------------------
@@ -475,7 +485,8 @@ def _end(m: Moment, play: float, cuts: list[float], sents: list[Sentence], hi: f
 
 def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: float, options: PipelineOptions,
            window: tuple[float, float] | None = None, cutaway: Cutaway | None = None) -> tuple[float, float]:
-    """The clip's final [start, end] in seconds, by the owner's rules."""
+    """The clip's final [start, end] in seconds, by the owner's rules. Raises NoClip when the
+    play time falls in a replay, or the clip can't reach SHORTEST_S without breaking a rule."""
     lo, hi = window or (0.0, duration_s)
     lo, hi = max(0.0, lo), min(duration_s, hi)
     cuts = sorted(c for c in cuts if lo < c < hi)
@@ -484,6 +495,9 @@ def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: f
         return _refine_talk(m, cuts=cuts, sents=sents, lo=lo, hi=hi, options=options)
 
     end, at_cut, play = _end(m, play, cuts, sents, hi, cutaway)
+    if _in_replay(play, cuts):
+        raise NoClip("its time falls in a replay, and the live play before it can't be told from the shots "
+                     "around it")
 
     # The start, never before a wipe into the play's scene (a replay, or live play after one).
     earliest = _after_transitions(cuts, play, lo)
@@ -499,9 +513,9 @@ def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: f
         # leaves the clip shorter than the minimum.
         start = min(start, _open_cleanly(max(earliest, end - options.min_clip_s), play, cuts, cutaway, earliest))
     shortest = min(SHORTEST_S, options.min_clip_s)
-    if end - start < shortest - 1.0:
-        # Still well under 6 s: a cutaway in the lead-up is better than running past the cut that ends
-        # the play, or than a clip too short to watch.
+    if end - start < shortest:
+        # Still under 6 s: a cutaway in the lead-up is better than running past the cut that ends the
+        # play, or than a clip too short to watch.
         start = _reach_back(start, max(earliest, end - shortest), cuts, earliest)
     if end - start < options.min_clip_s and not at_cut:
         # One court shot, pinned at the start of the video: the end may grow, but not into the next shot.
@@ -509,7 +523,20 @@ def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: f
         end = max(end, min(hi if nxt is None else nxt - CUT_GUARD_S, start + options.min_clip_s))
     if end - start > options.max_clip_s:
         end = start + options.max_clip_s
+    if end - start < shortest - 0.01:
+        before = "a wipe" if earliest > lo else "the start of the video"
+        raise NoClip(f"it would be {end - start:.1f} s long, under {shortest:.0f} s, between {before} just before "
+                     f"it and the broadcast's cut {max(0.0, end - play):.1f} s after it")
     return round(start, 2), round(end, 2)
+
+
+def _in_replay(play: float, cuts: list[float]) -> bool:
+    """Whether the play time falls in a replay: a stretch under REPLAY_S between the wipe into
+    it and the wipe out of it (two cuts under TRANSITION_S apart are a wipe)."""
+    wipes = [(a, b) for a, b in zip(cuts, cuts[1:], strict=False) if b - a < TRANSITION_S]
+    into = [b for a, b in wipes if b <= play + 0.05]
+    out = [a for a, b in wipes if a > play + 0.05]
+    return bool(into and out) and min(out) - max(into) <= REPLAY_S
 
 
 def _after_transitions(cuts: list[float], play: float, lo: float) -> float:

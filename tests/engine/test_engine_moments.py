@@ -170,12 +170,20 @@ def test_a_replay_wipe_after_the_play_ends_the_clip_where_it_begins():
 
 def test_a_clip_never_spans_the_live_game_and_a_replay():
     # A logo wipe 114.2-115.5 into a replay, and another 124.3-125.8 out of it. Muse Spark put the
-    # play at 124, in the replay: the clip is the replay alone, after the wipe in, before the wipe out.
+    # play at 124, in the replay: a clip there would be the replay alone, and the live play was
+    # somewhere before the wipe in, so there is no clip.
     wipes = [114.2, 114.83, 115.5, 124.3, 124.93, 125.77]
     m = moment(play=124.0, start=110.3, end=126.0, category="big_moment")
     sents = [s(118.3, 126.0, "He's in his gather as he's fouled and the floater rolls in")]
-    start, end = moments.refine(m, cuts=wipes, sents=sents, duration_s=400.0, options=OPTS)
-    assert (start, end) == (115.5, before(124.3))
+    with pytest.raises(moments.NoClip, match="replay"):
+        moments.refine(m, cuts=wipes, sents=sents, duration_s=400.0, options=OPTS)
+    with pytest.raises(moments.NoClip, match="replay"):  # also when the play time is in the wipe out
+        moments.refine(moment(play=124.5, category="big_moment"), cuts=wipes, sents=sents, duration_s=400.0,
+                       options=OPTS)
+    # Live play long after one replay and just before the next is no replay: it ends at the wipe in.
+    _, end = moments.refine(moment(), cuts=[60.0, 60.63, 61.2, 103.1, 103.73, 104.4],
+                            sents=[s(100.5, 101.5, "Three!")], duration_s=400.0, options=OPTS)
+    assert end == before(103.1)
     # A play time that fell inside the wipe in (no SAM to tell): the clip still ends before the wipe.
     _, end = moments.refine(moment(play=114.5, category="big_moment"), cuts=wipes, sents=sents, duration_s=400.0,
                             options=OPTS)
@@ -281,8 +289,9 @@ def test_a_cut_that_comes_early_leaves_the_clip_short_but_not_too_short():
 
     start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 102.8, 108.0],
                                 sents=[s(100.5, 102.0, "Blocked!")], duration_s=400.0, options=OPTS, cutaway=crowd)
-    assert (start, end) == (97.0, before(102.8))  # under the minimum, but it never opens on the crowd
-    # Under 5 s: it opens on the crowd after all, to make 6 s...
+    assert end == before(102.8) and start < 97.0  # under the minimum, so it opens on the crowd...
+    assert start == pytest.approx(97.0 - moments.FLASH_S)  # ...for 2 s, never a flash, rather than be under 6 s
+    # Opening on the crowd for exactly what makes 6 s, when that is no flash...
     blocked = [s(100.2, 100.8, "Blocked!")]
     start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 101.0, 108.0], sents=blocked,
                                 duration_s=400.0, options=OPTS, cutaway=crowd)
@@ -291,14 +300,31 @@ def test_a_cut_that_comes_early_leaves_the_clip_short_but_not_too_short():
     start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 101.5, 108.0], sents=blocked,
                                 duration_s=400.0, options=OPTS, cutaway=crowd)
     assert end == before(101.5) and start == pytest.approx(97.0 - moments.FLASH_S)
-    # A play in the first seconds: the end never grows into the next shot.
-    start, end = moments.refine(moment(play=3.0, start=0.0, category="blocks"), cuts=[5.5, 9.0],
-                                sents=[s(3.2, 4.5, "Blocked!")], duration_s=400.0, options=OPTS)
-    assert (start, end) == (0.0, before(5.5))
-    # In one court shot it may.
+    # A play in the first seconds, cut away from 2.5 s later: the end never grows into the next shot, and
+    # a clip of 5.5 s is no clip.
+    with pytest.raises(moments.NoClip, match="start of the video just before it and the broadcast's cut 2.5 s after"):
+        moments.refine(moment(play=3.0, start=0.0, category="blocks"), cuts=[5.5, 9.0],
+                       sents=[s(3.2, 4.5, "Blocked!")], duration_s=400.0, options=OPTS)
+    # In one court shot it may grow.
     start, end = moments.refine(moment(play=3.0, start=0.0, category="blocks"), cuts=[],
                                 sents=[s(3.2, 4.5, "Blocked!")], duration_s=400.0, options=OPTS)
     assert (start, end) == (0.0, OPTS.min_clip_s)
+
+
+def test_a_play_just_after_a_wipe_and_just_before_a_cut_is_no_clip():
+    # A free throw 2.5 s after the wipe out of a replay, a close-up 1.5 s after it: 3.9 s of live play.
+    # Crossing the wipe would show the logo and the replay, and running on would show the close-up.
+    with pytest.raises(moments.NoClip, match="under 6 s, between a wipe"):
+        moments.refine(moment(play=102.5, start=92.5, category="big_moment"), cuts=[90.0, 90.63, 99.4, 100.03, 104.0],
+                       sents=[s(102.8, 104.5, "And he converts the and one")], duration_s=400.0, options=OPTS)
+    # A layup 1.2 s after the wipe out.
+    with pytest.raises(moments.NoClip):
+        moments.refine(moment(play=101.2), cuts=[99.4, 100.03, 102.2], sents=[s(101.5, 102.5, "Layup good")],
+                       duration_s=400.0, options=OPTS)
+    # With room after the wipe, the clip starts after it, and is at least 6 s.
+    start, end = moments.refine(moment(play=106.0, start=92.0), cuts=[99.4, 100.03, 107.0],
+                                sents=[s(106.3, 106.9, "Layup good")], duration_s=400.0, options=OPTS)
+    assert start == 100.03 and end == before(107.0) and end - start >= moments.SHORTEST_S
 
 
 def test_a_play_time_well_after_its_call_is_checked_against_the_shots_in_between():

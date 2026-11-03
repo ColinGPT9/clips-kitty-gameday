@@ -47,6 +47,7 @@ class ClipWork:
     warnings: list[str] = field(default_factory=list)
     fallbacks: list[str] = field(default_factory=list)
     sam_frames: int = 0  # frames sent to SAM 3.1 for this clip
+    left_out: str = ""  # why the rules made no clip of this moment (moments.NoClip), if they didn't
 
     def to_proxy(self, t: float) -> float:
         return t - self.window[0]
@@ -181,8 +182,14 @@ def track_clip(work: ClipWork, *, source: Path, source_size: tuple[int, int], du
     if track is not None and len(track.found) and float(track.found.mean()) >= 0.2:
         # SAM sees the ball in this footage, so a shot without it, or with it close up, means something.
         cutaway = cutaways(track, fps, ws)
-    work.start_s, work.end_s = moments.refine(work.moment, cuts=work.cuts, sents=sents, duration_s=duration_s,
-                                              options=options, window=(ws, we), cutaway=cutaway)
+    try:
+        work.start_s, work.end_s = moments.refine(work.moment, cuts=work.cuts, sents=sents, duration_s=duration_s,
+                                                  options=options, window=(ws, we), cutaway=cutaway)
+    except moments.NoClip as exc:
+        work.left_out = str(exc)
+        log.info("%s: play at %.2f, no clip: %s; shots from %s", name, work.moment.play_s, exc,
+                 _shots(work, track, fps))
+        return work
     at_cut = any(abs(c - moments.CUT_GUARD_S - work.end_s) < 0.011 for c in work.cuts)
     log.info("%s: play at %.2f, clip %.2f-%.2f %s; shots from %s", name, work.moment.play_s, work.start_s,
              work.end_s, "ending at a cut" if at_cut else "ending on the talk", _shots(work, track, fps))

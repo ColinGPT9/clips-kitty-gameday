@@ -12,7 +12,7 @@ import pytest
 from PIL import Image
 
 from gameday import media
-from gameday.engine import pipeline
+from gameday.engine import pipeline, shots
 from gameday.meta_api.video import video_facts
 from gameday.types import (
     MODEL_SAM,
@@ -158,6 +158,16 @@ def test_without_a_key_it_falls_back_to_crowd_noise_and_a_centre_crop(game, tmp_
     assert all(c.follow.source == "centre" for c in result.clips)
     assert "no_key" in result.stats["fallbacks"]
     assert any("No Meta key" in w for w in result.warnings)
+
+
+def test_a_play_in_a_replay_makes_no_clip_and_the_run_says_why(game, tmp_path, monkeypatch):
+    # A wipe at 25.0-25.6 into a replay and one at 33.0-33.6 out of it: the corner three's time falls in it.
+    wipes = [25.0, 25.6, 33.0, 33.6]
+    monkeypatch.setattr(shots, "scan", lambda source, start, end, **kw: [c for c in wipes if start <= c <= end])
+    result, _ = run(game, tmp_path, FakeMeta(), title_cards=False)
+    [clip] = result.clips
+    assert clip.title == "Dunk on the break" and clip.index == 1 and clip.path.name == "clip_01.mp4"
+    assert any(w.startswith("No clip of the play at 0:") and "replay" in w for w in result.warnings)
 
 
 def test_meta_failures_become_warnings_not_errors(game, tmp_path):

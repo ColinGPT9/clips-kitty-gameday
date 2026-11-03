@@ -248,7 +248,10 @@ class _Run:
             for name in work.fallbacks:
                 if name not in self.fallbacks:
                     self.fallbacks.append(name)
-        works = self.separate(works)
+            if work.left_out:
+                minutes, seconds = divmod(int(work.moment.play_s), 60)
+                self.warn(f"No clip of the play at {minutes}:{seconds:02d}: {work.left_out}.")
+        works = self.separate([work for work in works if not work.left_out])
         self.timed("sam", started)
         return works
 
