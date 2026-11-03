@@ -422,14 +422,20 @@ def ending_cut(play: float, cuts: list[float], cutaway: Cutaway | None, hi: floa
     play time. Then the play time is a late guess, the call heard over the close-up
     after the play: the play came just before that cutaway, and ends where it began.
     A play called before it happened (a free throw "at the line") has no cutaway
-    between its call and its time, so it keeps its time."""
+    between its call and its time, so it keeps its time. A play time inside a wipe
+    is late too, with or without SAM: the play ends where the wipe began."""
     if cutaway is not None:
         since = play - LATE_PLAY_S if called is None else min(called, play - LATE_PLAY_S)
         for i, c in enumerate(cuts):
             if since < c <= play + 0.05 and cutaway(c, cuts[i + 1] if i + 1 < len(cuts) else hi):
                 log.info("play time %.2f is past the cutaway that began at %.2f: the play ends there", play, c)
                 return c, min(play, c - 1.0)
-    return next((c for c in cuts if c > play + 0.05), None), play
+    after = next((c for c in cuts if c > play + 0.05), None)
+    began = max((c for c in cuts if c <= play + 0.05), default=None)
+    if after is not None and began is not None and after - began < TRANSITION_S:
+        log.info("play time %.2f is inside the wipe that began at %.2f: the play ends there", play, began)
+        return began, min(play, began - 1.0)
+    return after, play
 
 
 def _end(m: Moment, play: float, cuts: list[float], sents: list[Sentence], hi: float,

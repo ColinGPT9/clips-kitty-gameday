@@ -176,6 +176,10 @@ def test_a_clip_never_spans_the_live_game_and_a_replay():
     sents = [s(118.3, 126.0, "He's in his gather as he's fouled and the floater rolls in")]
     start, end = moments.refine(m, cuts=wipes, sents=sents, duration_s=400.0, options=OPTS)
     assert (start, end) == (115.5, before(124.3))
+    # A play time that fell inside the wipe in (no SAM to tell): the clip still ends before the wipe.
+    _, end = moments.refine(moment(play=114.5, category="big_moment"), cuts=wipes, sents=sents, duration_s=400.0,
+                            options=OPTS)
+    assert end == before(114.2)
     # Live play after the replay of the one before: the lead-up never reaches back into that replay.
     start, _ = moments.refine(moment(start=85.0), cuts=[88.0, 88.6, 89.4], sents=[s(100.5, 101.5, "Three!")],
                               duration_s=400.0, options=OPTS)
