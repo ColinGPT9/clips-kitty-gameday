@@ -80,6 +80,11 @@ def tick(db, state: TickState, *, relay: Relay | None = None, emit=None, clock=t
     """One pass, if one is due. Returns how many uploads it queued."""
     config = ra_settings.load(db)
     if not (config["whatsapp_enabled"] or ra_settings.muse_connected(config)):
+        # The phone can't be reached, but what is only local still moves on: links
+        # expire, and uploads already approved (they run all the same) settle.
+        changed = expire_due(db, now or store.now_utc()) + settle_publishing(db, config)
+        if changed and emit:
+            emit({"type": "remote_approval", "changed": changed})
         return 0
     mono = clock()
     # A message waiting to go (a job just finished) doesn't wait for the

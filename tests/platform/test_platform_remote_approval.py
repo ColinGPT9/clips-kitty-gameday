@@ -532,6 +532,18 @@ def test_everything_published_settles_published_and_says_so(db, on):
     assert result["kind"] == "result" and result["text"] == "2 of 2 posts published"
 
 
+def test_uploads_settle_even_once_whatsapp_and_muse_are_both_off(db, on):
+    review, relay = offered(db, on)
+    commands.handle(db, approve_command(review, platforms=["instagram", "facebook"]), secret=SECRET)
+    ra_settings.save(db, {"whatsapp_enabled": False, "muse": {}}, internal=True)  # turned off mid-upload
+    _finish(db, review, {"instagram": ("published", "https://www.instagram.com/reel/A/"),
+                         "facebook": ("published", "https://www.facebook.com/reel/1")})
+    changed = []
+    assert service.tick(db, service.TickState(), relay=relay, emit=changed.append) == 0
+    assert store.get_review(db, review["id"])["state"] == states.PUBLISHED
+    assert changed == [{"type": "remote_approval", "changed": 1}]
+
+
 def test_a_partial_failure_is_reported_as_one_and_can_be_retried(db, on):
     review, relay = offered(db, on)
     commands.handle(db, approve_command(review, platforms=["instagram", "facebook"]), secret=SECRET)
