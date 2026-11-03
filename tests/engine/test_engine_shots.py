@@ -75,11 +75,15 @@ def test_a_wipe_counts_where_it_begins_and_where_it_ends():
 
 
 @pytest.mark.media
-def test_the_cuts_are_found_in_the_game_itself(tmp_path, need_ffmpeg):
+def test_the_cuts_are_found_in_the_game_itself_to_the_frame(tmp_path, need_ffmpeg):
     video = tmp_path / "two_shots.mp4"
-    subprocess.run([media.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30:d=3",
-                    "-f", "lavfi", "-i", "smptebars=size=320x180:rate=30:d=3", "-filter_complex",
-                    "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]", "-c:v", "libx264", "-preset", "ultrafast",
-                    "-pix_fmt", "yuv420p", str(video)], check=True)
-    assert shots.scan(video, 0.5, 5.5) == [pytest.approx(3.0, abs=0.01)]
-    assert shots.scan(video, 3.5, 5.5) == []
+    subprocess.run([media.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30:d=30",
+                    "-f", "lavfi", "-i", "smptebars=size=320x180:rate=30:d=4", "-f", "lavfi", "-i",
+                    "sine=frequency=440:duration=34", "-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]",
+                    "-map", "[v]", "-map", "2:a", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", str(video)], check=True)
+    assert shots.scan(video, 27.0, 33.0) == [pytest.approx(30.0, abs=0.005)]
+    assert shots.scan(video, 30.5, 33.0) == []
+    # Started between two frames, every frame still lines up with its time (not one frame late).
+    for start in (29.27, 29.25, 29.31):
+        assert shots.scan(video, start, 33.0) == [pytest.approx(30.0, abs=0.005)]

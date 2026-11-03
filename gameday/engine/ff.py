@@ -116,12 +116,19 @@ def tiny_frames(source: Path, *, start: float, seconds: float, width: int = 64, 
     if seek_at > 0:
         cmd += ["-ss", f"{seek_at:.3f}"]
     cmd += ["-i", str(source), "-t", f"{max(0.0, seconds):.3f}", "-map", "0:v:0", "-an", "-sn", "-dn",
-            "-vf", ",".join(chain), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=timeout)
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise MediaError(f"ffmpeg didn't run: {exc}") from exc
-    err = proc.stderr.decode("utf-8", "replace")
+            "-vf", ",".join(chain)]
+    # Raw video out is constant-rate by default: a seek between two frames would repeat the first one,
+    # and every frame after it would sit one frame behind its time. Passed through, they match one to one
+    # (-fps_mode since ffmpeg 5.1, -vsync before).
+    for rate in (["-fps_mode", "passthrough"], ["-vsync", "passthrough"]):
+        try:
+            proc = subprocess.run([*cmd, *rate, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True,
+                                  timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise MediaError(f"ffmpeg didn't run: {exc}") from exc
+        err = proc.stderr.decode("utf-8", "replace")
+        if proc.returncode == 0 or rate[0].lstrip("-") not in err:
+            break
     if proc.returncode != 0:
         raise MediaError("ffmpeg failed: " + err.strip()[-600:])
     size = width * height * 3
