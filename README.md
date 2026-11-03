@@ -45,7 +45,8 @@ ffmpeg cuts and renders the clips. It is a tool, not a model.
   and Facebook Page Reels.
 
 Options: Basketball or Talk mode, clips per game (1 to 12), "Teams or
-players" (a hint for Muse Spark), and title cards.
+players" (a hint for Muse Spark), title cards, and a credit line added to
+every caption (for footage you don't own, like the demo game's DVIDS notice).
 
 ## How it works
 

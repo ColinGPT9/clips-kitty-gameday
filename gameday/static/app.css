@@ -122,7 +122,7 @@ body.menu-open { overflow: hidden; }
 h1, h2, h3, p, ul, ol, fieldset { margin: 0; }
 ul, ol { padding: 0; list-style: none; }
 img, video, svg { display: block; max-width: 100%; }
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 a { color: var(--ck-sky); text-decoration: none; }
 a:hover { text-decoration: underline; }
 b, strong { font-weight: var(--ck-w-semi); }
@@ -426,6 +426,7 @@ b, strong { font-weight: var(--ck-w-semi); }
 .input.search { width: 288px; padding: 4px 12px; font-size: var(--ck-t14); line-height: 20px; }
 .mono-input { font-family: var(--ck-mono); font-size: var(--ck-t14); }
 select.input { cursor: pointer; }
+textarea.input { display: block; resize: vertical; }
 
 .form { display: flex; flex-direction: column; gap: var(--ck-gap-1); }
 .form .label:not(:first-child) { margin-top: var(--ck-gap-2); }

@@ -1121,6 +1121,7 @@
     put('opt-mode', (el) => { el.value = s.mode; });
     put('opt-clips', (el) => { el.value = String(s.max_clips); });
     put('opt-hint', (el) => { el.value = s.hint || ''; });
+    put('opt-credit', (el) => { el.value = s.caption_credit || ''; });
     put('opt-cards', (el) => { el.checked = !!s.title_cards; });
     renderGameDay();
   }
@@ -1404,6 +1405,8 @@
       saveOptions({ max_clips: n });
     });
     $('opt-hint').addEventListener('change', (e) => saveOptions({ hint: e.target.value.trim().slice(0, 200) }));
+    // The server trims it and refuses more than 3 lines, saying why in the note.
+    $('opt-credit').addEventListener('change', (e) => saveOptions({ caption_credit: e.target.value }));
     $('opt-cards').addEventListener('change', (e) => saveOptions({ title_cards: e.target.checked }));
   }
 
