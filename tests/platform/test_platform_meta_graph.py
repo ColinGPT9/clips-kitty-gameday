@@ -93,12 +93,13 @@ def test_facebook_reel_start_upload_finish_and_poll(clip_file):
     assert posted.url == "https://www.facebook.com/reel/V1"
 
 
-def test_a_video_still_processing_at_the_deadline_is_not_called_published(clip_file):
+def test_a_video_still_processing_at_the_deadline_is_a_failure_retry_can_send_again(clip_file):
+    # Never published, so nothing can appear later: "processing" would block Retry for good.
     clock = iter(range(0, 10_000, 100))
     relay = ScriptedRelay(ig_create={"container_id": "C1"}, ig_status={"status_code": "IN_PROGRESS"})
     g = meta_graph.MetaGraph(relay, sleep=lambda s: None, clock=lambda: next(clock))
-    posted = g.instagram(CTX, clip_file, "x")
-    assert posted.state == "processing" and posted.url == ""
+    with pytest.raises(PublishError, match="still processing this video after 10 minutes"):
+        g.instagram(CTX, clip_file, "x")
     assert "ig_publish" not in relay.ops()
 
 

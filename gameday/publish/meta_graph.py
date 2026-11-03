@@ -185,9 +185,10 @@ class MetaGraph:
             return None
 
         if not self._poll(ready, should_cancel):
-            return Posted("instagram", state="processing", warnings=[
-                "Instagram is still processing this video, so it was not published yet. "
-                "Approve it again later if it does not appear."])
+            # The publish step was never sent, so nothing can go up from this upload:
+            # a failure, which Retry failed may safely send again.
+            raise PublishError("Instagram was still processing this video after 10 minutes, so it was not "
+                               "published. Retry it to upload it again.")
         try:
             published = self._step("ig_publish", ctx, container_id=container)
         except PublishError as e:
