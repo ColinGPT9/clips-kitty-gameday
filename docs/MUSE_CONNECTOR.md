@@ -146,27 +146,27 @@ Remind me later and Cancel still work while it is blocked.
 If approving from the phone was on only because of Muse, revoking the key
 switches it off as well: nothing would reach you any more.
 
+## What ran in the Muse app
+
+On 2 Nov 2026, on the event branch's live relay, the Muse app took this
+connector as a custom connector: the remote MCP server, with the key in the
+`Authorization: Bearer` header. Muse then handed over an offer's approval
+link, which opened on the phone. So Muse connects with a header key (no
+OAuth needed), and its calls carry no `Origin` the relay refuses.
+
 ## Not confirmed yet
 
-The connector is built from Meta's description of custom connectors and the
-MCP specification, and runs in the relay's tests. It has not been tried in
-the Muse app itself:
-
-- **Which MCP revision Muse speaks.** The relay answers both the
-  `initialize` handshake (2025-03-26, 2025-06-18 and 2025-11-25, in plain
-  JSON, never a session) and the stateless 2026-07-28 revision. It offers no
-  Server-Sent Events (`GET /mcp` answers 405) and no JSON-RPC batches.
-- **OAuth or a header key.** The relay takes a key in a header. If Muse
-  connects to remote MCP servers only through OAuth, this connector won't
-  connect as it is: the OpenAPI routes with the same key are the fallback to
-  try.
-- **The `Origin` header.** A request that carries an `Origin` other than the
-  relay's own is refused, so web pages can't call it. Muse's servers are not
-  expected to send one.
-- **Whether Muse can remind you later by itself.** Nothing sends a
-  reminder, and the relay can't reach Muse first: it only answers Muse's
-  calls. Until that is tried, the approval page says the app
-  will not remind you, and to ask Muse for the link.
+- **Which MCP revision Muse speaks.** It connected, but which revision it
+  used wasn't recorded. The relay answers both the `initialize` handshake
+  (2025-03-26, 2025-06-18 and 2025-11-25, in plain JSON, never a session)
+  and the stateless 2026-07-28 revision. It offers no Server-Sent Events
+  (`GET /mcp` answers 405) and no JSON-RPC batches.
+- **Whether Muse acts on `remind_at` by itself.** `remind_me_later` gives
+  Muse the time back and asks it to remind you; that hasn't been tried.
+  Nothing else sends a reminder, and the relay can't reach Muse first: it
+  only answers Muse's calls. So the approval page says the app will not
+  remind you, and to ask Muse for the link. This is separate from a
+  reminder you set yourself in Muse.
 
 ## Where it is
 
