@@ -297,6 +297,7 @@ def test_muse_spark_writes_every_clips_words_in_one_request_and_it_is_kept(db, o
     assert [c["clip_id"] for c in told["clips"]] == [c["clip_id"] for c in review["clips"]]
     assert told["clips"][0]["commentary"] == "What a poster dunk!"
     assert "Never invent" in messages[0]["content"]
+    assert [m["role"] for m in messages] == ["system", "user"]  # the roles the engine's Spark call uses
     entry = review["clips"][0]
     text = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
     assert text["source"] == "muse_spark" and text["title"] == "Muse: Poster dunk"

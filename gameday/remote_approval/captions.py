@@ -128,7 +128,7 @@ def generate(db, review: dict, clip_rows: dict, *, meta, hint: str = "") -> dict
     if hint.strip():
         prompt["teams_or_players"] = hint.strip()[:200]
     messages = [
-        {"role": "developer", "content": INSTRUCTIONS_FOR[offer_kind(review)]},
+        {"role": "system", "content": INSTRUCTIONS_FOR[offer_kind(review)]},  # as the engine's Spark call
         {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
     ]
     answer = meta.chat_json(messages, SCHEMA, name="clips_kitty_posts", purpose="captions",
