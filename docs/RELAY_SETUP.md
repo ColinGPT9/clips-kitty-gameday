@@ -139,15 +139,10 @@ The relay sends four utility templates (`ck_highlights_ready`,
 `ck_processing_failed`, `ck_publish_update` and `ck_test_message`). Meta has
 to approve them first, which usually takes minutes to a few hours. Until
 then, messages reach you only within 24 hours of your last message to the
-business number. The app asks Meta to review them through the relay with
-`POST /remote-approval/templates` and `{"create": true}`; the same call with
-`{}` reads their status. For example, from a shell (curl asks for the owner
-password):
-
-```
-curl -u owner -X POST https://<your app>/remote-approval/templates \
-  -H "X-Gameday-Action: 1" -H "Content-Type: application/json" -d '{"create": true}'
-```
+business number. In **Setup → WhatsApp**, **Send them for review** asks
+Meta to review them through the relay, and **Check their status** shows
+where each one stands. (Both call `POST /remote-approval/templates`, with
+`{"create": true}` and `{}`.)
 
 ## What gets posted
 

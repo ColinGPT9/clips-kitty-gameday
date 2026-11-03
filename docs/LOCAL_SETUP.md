@@ -84,12 +84,12 @@ nothing is posted anywhere.
    address (`http://127.0.0.1:8787`) and an enrolment key.
 2. **Setup → Relay**: that address and key, then **Connect**. (The app takes a
    plain `http://` address only for a relay on this computer.)
-3. **Setup → Approval PIN**: type a PIN of 4 to 8 digits, not one digit
+3. **Setup → PIN**: type a PIN of 4 to 8 digits, not one digit
    repeated or a run like 1234. Enter your PIN yourself. Never give it to an
    assistant.
 4. **Setup → Muse**: **Make a Muse key**. It is shown once: copy it into an
    environment variable (`MUSE_KEY` below) rather than into a command.
-5. **Setup → Facebook and Instagram**: **Connect** opens Meta's real sign-in
+5. **Setup → Facebook + Instagram**: **Connect** opens Meta's real sign-in
    page in a new tab, which can't finish against the mock. Copy that tab's
    address and finish the sign-in with the mock instead (from Git Bash, macOS
    or Linux):
