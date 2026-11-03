@@ -109,8 +109,8 @@ nothing is posted anywhere.
    ```
 
 7. Switch on **Let me approve publishing from my phone**.
-8. Upload a short clip. When the job is done, the offer shows under **Offers
-   on your phone**. Ask the relay for it the way Muse would:
+8. Upload a short clip. When the job is done, the offer shows under **Phone
+   offers**. Ask the relay for it the way Muse would:
 
    ```
    curl -H "Authorization: Bearer $MUSE_KEY" http://127.0.0.1:8787/muse/v1/offers

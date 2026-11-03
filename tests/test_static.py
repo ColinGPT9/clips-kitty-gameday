@@ -110,3 +110,13 @@ def test_every_id_the_script_uses_is_in_the_page():
     used = set(re.findall(r"(?:\$|show|setText|note)\('([A-Za-z][\w-]*)'\s*[,)]", js))
     missing = sorted(used - ids)
     assert not missing, f"app.js looks up ids that index.html lacks: {missing}"
+
+
+def test_no_element_is_named_like_a_view():
+    """A page's route is its hash (#offers): an element with that id would make the
+    browser scroll to it on load, hiding the page's heading under the top bar."""
+    tags = _page().tags
+    routes = {attrs["href"][1:] for tag, attrs in tags if tag == "a" and attrs.get("href", "").startswith("#")
+              and "data-view" in attrs}
+    ids = {attrs["id"] for _, attrs in tags if "id" in attrs}
+    assert routes and not routes & ids, sorted(routes & ids)

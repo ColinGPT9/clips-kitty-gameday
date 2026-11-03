@@ -168,7 +168,7 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
 
     @app.post("/api/meta/test")
     def test_meta_key():
-        from gameday.types import MetaError
+        from gameday.types import BudgetExceeded, MetaError
 
         try:
             meta = meta_factory()
@@ -178,6 +178,8 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
             return {"ok": False, "error": "No Meta key is saved."}
         try:
             meta.test_key()
+        except BudgetExceeded as e:  # this app's own budget stopped it: nothing reached Meta
+            return {"ok": False, "budget": True, "error": str(e) or "Meta calls are paused by the budget."}
         except MetaError as e:
             return {"ok": False, "error": str(e) or "The key didn't work."}
         return {"ok": True}
@@ -195,38 +197,41 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
         config.uploads_dir.mkdir(parents=True, exist_ok=True)
         target = config.uploads_dir / f"{uuid.uuid4().hex[:12]}_{name}"
         size = 0
-        try:
-            with open(target, "xb") as out:
-                async for chunk in request.stream():
-                    size += len(chunk)
-                    if size > limit:
-                        raise HTTPException(413, too_big)
-                    out.write(chunk)
-        except (HTTPException, ClientDisconnect, OSError) as e:
-            _remove(target)
-            if isinstance(e, HTTPException):
-                raise
-            if isinstance(e, ClientDisconnect):
-                raise HTTPException(400, "The upload stopped before the whole file arrived.") from None
-            raise HTTPException(500, "The app couldn't save the upload.") from None
-        if not size:
-            _remove(target)
-            raise HTTPException(400, "The upload was empty.")
-        try:
-            info = await run_in_threadpool(probe, target)
-        except media.MediaError:
-            _remove(target)
-            raise HTTPException(400, "That file isn't a video the app can read.") from None
-        stat = target.stat()
+        kept = False
+        try:  # the file goes, whatever stops this (a cancelled task too), unless a video row holds it
+            try:
+                with open(target, "xb") as out:
+                    async for chunk in request.stream():
+                        size += len(chunk)
+                        if size > limit:
+                            raise HTTPException(413, too_big)
+                        out.write(chunk)
+            except (HTTPException, ClientDisconnect, OSError) as e:
+                if isinstance(e, HTTPException):
+                    raise
+                if isinstance(e, ClientDisconnect):
+                    raise HTTPException(400, "The upload stopped before the whole file arrived.") from None
+                raise HTTPException(500, "The app couldn't save the upload.") from None
+            if not size:
+                raise HTTPException(400, "The upload was empty.")
+            try:
+                info = await run_in_threadpool(probe, target)
+            except media.MediaError:
+                raise HTTPException(400, "That file isn't a video the app can read.") from None
+            stat = target.stat()
 
-        def record():
-            video_id = store.add_video(name=name, path=str(target.resolve()), source="upload", size=stat.st_size,
-                                       mtime_ns=stat.st_mtime_ns, duration_s=info.duration_s)
-            job_id = store.add_job(video_id, store.job_settings())
-            store.add_event("info", "upload", f"Uploaded {name}: job {job_id} is queued.", job_id=job_id)
-            return video_id, job_id
+            def record():
+                video_id = store.add_video(name=name, path=str(target.resolve()), source="upload",
+                                           size=stat.st_size, mtime_ns=stat.st_mtime_ns, duration_s=info.duration_s)
+                job_id = store.add_job(video_id, store.job_settings())
+                store.add_event("info", "upload", f"Uploaded {name}: job {job_id} is queued.", job_id=job_id)
+                return video_id, job_id
 
-        video_id, job_id = await run_in_threadpool(record)
+            video_id, job_id = await run_in_threadpool(record)
+            kept = True
+        finally:
+            if not kept:
+                _remove(target)
         worker.wake_jobs()
         return {"video_id": video_id, "job_id": job_id}
 
@@ -291,6 +296,12 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
         job = job_or_404(job_id)
         if job["state"] not in ("failed", "cancelled"):
             raise HTTPException(409, "Only a failed or cancelled job can be retried.")
+        # Each retry is a whole paid run: a second click, or a second tab, never queues another.
+        again = store.conn.execute(
+            "SELECT id FROM jobs WHERE retry_of = ? AND state IN ('queued', 'running', 'done') ORDER BY id DESC",
+            (int(job_id),)).fetchone()
+        if again is not None:
+            raise HTTPException(409, f"This job was already retried as job {again['id']}.")
         video = store.get_video(job["video_id"])
         if video is None or not Path(video["path"]).is_file():
             raise HTTPException(409, "The video file is no longer there, so the job can't run again.")

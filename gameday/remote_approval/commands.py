@@ -171,7 +171,9 @@ def _approve(db, review: dict, command: dict, now) -> Outcome:
         store.move(db, review["id"], states.FAILED, actor="desktop", detail="nothing could be queued", error=why)
         return Outcome("rejected", why)
     store.move(db, review["id"], states.PUBLISH_QUEUED, actor="desktop", detail=f"{queued} upload(s) queued")
-    return Outcome("accepted", f"{queued} clip(s) queued for {', '.join(platforms)}.", queued=queued)
+    # No full stop: the relay's page adds its own after the reason.
+    where = " and ".join(ra_settings.PLATFORM_LABELS.get(p, p) for p in platforms)
+    return Outcome("accepted", f"{queued} clip{'s' if queued != 1 else ''} queued for {where}", queued=queued)
 
 
 def queue_publishes(db, review: dict, decision: dict, *, only: dict | None = None) -> int:
@@ -291,10 +293,10 @@ def running_jobs(db, review_id: int) -> list:
     return [j for j in jobs_for_review(db, review_id) if j["status"] == "running"]
 
 
-def cancel_queued(db, review_id: int) -> int:
+def cancel_queued(db, review_id: int, *, where: str = "the phone") -> int:
     stopped = 0
     for job in jobs_for_review(db, review_id):
         if job["status"] == "queued":
-            db.finish_publish_job(job["id"], "cancelled", error="Cancelled from the phone.")
+            db.finish_publish_job(job["id"], "cancelled", error=f"Cancelled from {where}.")
             stopped += 1
     return stopped

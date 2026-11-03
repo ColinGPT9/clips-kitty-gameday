@@ -7,6 +7,7 @@ module runs ffmpeg itself (same program, same settings).
 
 from __future__ import annotations
 
+import functools
 import re
 import subprocess
 from pathlib import Path
@@ -15,6 +16,40 @@ from gameday import media
 from gameday.media import MediaError
 
 PROXY_WIDTH = 640
+
+#: In an MPEG transport or program stream (.ts, .mts, .m2ts, .mpg), an input
+#: seek can land past the keyframe it needs, and ffmpeg then drops every frame
+#: up to the next keyframe: the span starts up to a GOP late. For those, the
+#: input is sought this much earlier and trimmed to the exact time in the
+#: filter graph.
+SEEK_PAD_S = 10.0
+LOOSE_SEEK_FORMATS = frozenset({"mpegts", "mpeg"})
+
+
+@functools.lru_cache(maxsize=64)
+def _format_names(path: str, mtime_ns: int) -> frozenset[str]:
+    try:
+        out = subprocess.run([media.FFPROBE, "-v", "error", "-show_entries", "format=format_name", "-of", "csv=p=0",
+                              path], capture_output=True, text=True, timeout=60).stdout
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+    return frozenset(part.strip() for part in (out or "").split(",") if part.strip())
+
+
+def seek_plan(source: Path, start: float) -> tuple[float, float]:
+    """For a span of `source` from `start`: where to seek the input, and how
+    many seconds to trim off after that seek, so the span starts on its frame."""
+    if start <= 0:
+        return 0.0, 0.0
+    try:
+        resolved = Path(source).resolve()
+        names = _format_names(str(resolved), resolved.stat().st_mtime_ns)
+    except OSError:
+        return start, 0.0
+    if not names & LOOSE_SEEK_FORMATS:
+        return start, 0.0
+    seek_at = max(0.0, start - SEEK_PAD_S)
+    return seek_at, start - seek_at
 
 
 def run(args: list[str], *, cwd: Path | None = None, timeout: float | None = None, level: str = "error") -> str:
@@ -41,11 +76,15 @@ def make_proxy(source: Path, out: Path, *, start: float, seconds: float, fps: fl
                width: int = PROXY_WIDTH, timeout: float | None = 600) -> Path:
     """A small H.264 copy of [start, start + seconds] for SAM 3.1: `fps` frames a
     second, at most `width` pixels wide, no sound."""
+    seek_at, skip = seek_plan(source, start)
     args: list[str] = []
-    if start > 0:
-        args += ["-ss", f"{start:.3f}"]
+    if seek_at > 0:
+        args += ["-ss", f"{seek_at:.3f}"]
+    chain = f"fps={fps:g},scale='min({width},iw)':-2"
+    if skip:
+        chain = f"trim=start={skip:.3f},setpts=PTS-STARTPTS," + chain
     args += ["-i", str(source), "-t", f"{seconds:.3f}", "-map", "0:v:0", "-an", "-sn", "-dn",
-             "-vf", f"fps={fps:g},scale='min({width},iw)':-2", "-c:v", "libx264", "-preset", "veryfast",
+             "-vf", chain, "-c:v", "libx264", "-preset", "veryfast",
              "-crf", "26", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
     run(args, timeout=timeout)
     return out

@@ -351,6 +351,23 @@ def test_a_preview_is_signed_over_its_query_and_sent_whole(monkeypatch):
     assert refused.value.code == "not_registered"
 
 
+def test_a_redirect_from_the_relay_is_never_followed(monkeypatch):
+    sent = []
+
+    class Moved(_Answer):
+        status_code = 307
+
+    def transport(method, url, **kw):
+        sent.append(kw)
+        return Moved({})
+
+    monkeypatch.setattr(relay_mod, "transport", transport)
+    with pytest.raises(RelayError) as moved:
+        relay_mod.Relay("https://relay.test", "dev_0123456789abcdef", SECRET).disconnect()
+    assert moved.value.code == "redirect" and "final https://" in moved.value.message
+    assert [kw["allow_redirects"] for kw in sent] == [False]
+
+
 # ---- the encode ----------------------------------------------------------------------------
 
 

@@ -266,6 +266,15 @@ def test_a_pipeline_that_is_not_a_games_own_offers_a_video_in_plain_words(db, on
     assert "basketball" not in json.dumps(made).lower()
 
 
+def test_without_a_key_the_engines_loudness_note_is_never_posted(db, on):
+    review = {"captions": {}, "fingerprint": "f", "summary": {"kind": "basketball"}}
+    entry = {"clip_id": 1, "title": "Big moment 1", "label": "Loud moment at 0:28"}
+    made = captions.texts_for(review, None, entry)
+    assert made["instagram"] == made["facebook"] == "Big moment 1\n\n#basketball #highlights"
+    told = captions.texts_for(review, None, {**entry, "label": "Poster dunk"})
+    assert told["instagram"] == "Big moment 1\n\nPoster dunk\n\n#basketball #highlights"
+
+
 def test_a_relay_that_is_down_is_retried_later_and_a_refusal_is_not(db, on):
     job = finished_job(db, on)
     review_id = notifier.on_job_finished(db, job, "done")
@@ -297,6 +306,7 @@ def test_muse_spark_writes_every_clips_words_in_one_request_and_it_is_kept(db, o
     assert [c["clip_id"] for c in told["clips"]] == [c["clip_id"] for c in review["clips"]]
     assert told["clips"][0]["commentary"] == "What a poster dunk!"
     assert "Never invent" in messages[0]["content"]
+    assert [m["role"] for m in messages] == ["system", "user"]  # the roles the engine's Spark call uses
     entry = review["clips"][0]
     text = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
     assert text["source"] == "muse_spark" and text["title"] == "Muse: Poster dunk"
@@ -305,6 +315,26 @@ def test_muse_spark_writes_every_clips_words_in_one_request_and_it_is_kept(db, o
     assert captions.generate(db, review, {}, meta=meta) == review["captions"]
     assert len(meta.calls) == 1
     assert db.job_cost(job["id"]) == 0.002
+
+
+def test_hashtags_muse_spark_puts_in_the_caption_are_posted_once(db, on):
+    meta = FakeMeta(db.ledger())
+    plain = meta.chat_json
+
+    def with_hashtags_inside(*args, **kwargs):
+        answer = plain(*args, **kwargs)
+        for clip in answer["clips"]:
+            clip["instagram_caption"] += " #Hoops #Clutch"  # what the real Muse Spark did
+            clip["facebook_description"] = "What a #clutch finish. #HOOPS"
+        return answer
+
+    meta.chat_json = with_hashtags_inside
+    review = store.get_review(db, notifier.on_job_finished(db, finished_job(db, on), "done", meta=meta))
+    entry = review["clips"][0]
+    text = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
+    assert text["instagram"] == "Poster dunk from tonight.\n\n#hoops #game #day #basketball #clutch"
+    assert text["facebook"] == "What a #clutch finish.\n\n#hoops #game #day #basketball"
+    assert "no hashtags" in captions.INSTRUCTIONS
 
 
 def test_an_answer_naming_clips_it_was_not_given_is_cleaned():
@@ -320,11 +350,29 @@ def test_an_answer_naming_clips_it_was_not_given_is_cleaned():
 # ---- decisions from the phone ----------------------------------------------------------
 
 
+def test_a_cancel_refused_while_an_upload_runs_changes_nothing(db, on):
+    review, _ = offered(db, on)
+    ids = [c["clip_id"] for c in review["clips"][:2]]
+    commands.handle(db, approve_command(review, clips=ids, platforms=["instagram"]), secret=SECRET)
+    running = db.claim_next_publish_job()
+    with pytest.raises(states.IllegalMove):
+        service.cancel_from_app(db, review["id"])
+    jobs = commands.jobs_for_review(db, review["id"])
+    assert sorted(j["status"] for j in jobs) == ["queued", "running"]  # the other clip still goes
+    db.finish_publish_job(running["id"], "done")
+    service.cancel_from_app(db, review["id"])  # nothing uploading now: the rest is stopped
+    stopped = [j for j in commands.jobs_for_review(db, review["id"]) if j["id"] != running["id"]]
+    assert [(j["status"], j["error"]) for j in stopped] == [("cancelled", "Cancelled from the app.")]
+    assert store.get_review(db, review["id"])["state"] == states.CANCELLED
+
+
 def test_an_approval_queues_one_publish_per_clip(db, on):
     review, _ = offered(db, on)
     ids = [c["clip_id"] for c in review["clips"][:2]]
     out = commands.handle(db, approve_command(review, clips=ids, platforms=["instagram", "facebook"]), secret=SECRET)
     assert out.outcome == "accepted" and out.queued == 2
+    # The relay's page says "Your PC accepted it: <reason>." and adds the full stop itself.
+    assert out.reason == "2 clips queued for Instagram Reels and Facebook Page Reels"
     review = store.get_review(db, review["id"])
     assert review["state"] == states.PUBLISH_QUEUED
     assert review["decision"]["platforms"] == ["instagram", "facebook"]
@@ -509,6 +557,18 @@ def test_everything_published_settles_published_and_says_so(db, on):
     service.flush_outbox(db, relay)
     result = relay.notified[-1]
     assert result["kind"] == "result" and result["text"] == "2 of 2 posts published"
+
+
+def test_uploads_settle_even_once_whatsapp_and_muse_are_both_off(db, on):
+    review, relay = offered(db, on)
+    commands.handle(db, approve_command(review, platforms=["instagram", "facebook"]), secret=SECRET)
+    ra_settings.save(db, {"whatsapp_enabled": False, "muse": {}}, internal=True)  # turned off mid-upload
+    _finish(db, review, {"instagram": ("published", "https://www.instagram.com/reel/A/"),
+                         "facebook": ("published", "https://www.facebook.com/reel/1")})
+    changed = []
+    assert service.tick(db, service.TickState(), relay=relay, emit=changed.append) == 0
+    assert store.get_review(db, review["id"])["state"] == states.PUBLISHED
+    assert changed == [{"type": "remote_approval", "changed": 1}]
 
 
 def test_a_partial_failure_is_reported_as_one_and_can_be_retried(db, on):
@@ -705,8 +765,13 @@ def test_the_loop_paces_itself_and_handles_commands(db, on):
 
 
 def test_settings_are_cleaned_and_never_show_the_secret(db, on):
-    with pytest.raises(ValueError):
-        ra_settings.save(db, {"relay_url": "http://relay.example.com"})
+    for bad in ("http://relay.example.com", "http://localhost.evil.example", "http://localhost@evil.example",
+                "http://127.0.0.1.nip.io", "https://user:pw@relay.example.com", "https://", "ftp://relay.example.com",
+                "https://relay.example.com:port"):
+        with pytest.raises(ValueError):
+            ra_settings.save(db, {"relay_url": bad})
+    for good in ("https://relay.example.com", "http://localhost:8787", "http://[::1]:8787"):
+        assert ra_settings.save(db, {"relay_url": good})["relay_url"] == good
     s = ra_settings.save(db, {"relay_url": "http://127.0.0.1:8787/", "preferred_destinations": ["facebook", "tiktok"],
                               "approval_hours": 999, "pairing": {"state": "confirmed"}})
     assert s["relay_url"] == "http://127.0.0.1:8787"

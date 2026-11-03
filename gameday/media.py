@@ -35,10 +35,28 @@ def _rate(text: str) -> float:
         return 0.0
 
 
+def _quarter_turned(stream: dict) -> bool:
+    """Whether the stream is shown turned by 90 or 270 degrees (a phone held
+    upright). ffmpeg turns such frames as it decodes them, so every frame the
+    engine sees has the stored width and height swapped."""
+    turns = [d.get("rotation") for d in stream.get("side_data_list") or [] if isinstance(d, dict)]
+    turns.append((stream.get("tags") or {}).get("rotate"))
+    for turn in turns:
+        try:
+            if int(round(float(turn))) % 180 == 90:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def probe(path: Path, *, timeout: float = 60) -> MediaInfo:
-    """What a video file holds. Raises MediaError if it has no video stream."""
+    """What a video file holds, as ffmpeg decodes it: width and height are
+    those of the frames after any display rotation. Raises MediaError if it
+    has no video stream."""
     cmd = [FFPROBE, "-v", "error", "-show_entries",
-           "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,sample_rate",
+           "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,sample_rate"
+           ":stream_side_data=rotation:stream_tags=rotate",
            "-of", "json", str(path)]
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=True).stdout
@@ -54,10 +72,13 @@ def probe(path: Path, *, timeout: float = 60) -> MediaInfo:
         duration = float((data.get("format") or {}).get("duration") or 0)
     except ValueError:
         duration = 0.0
+    width, height = int(video["width"]), int(video.get("height") or 0)
+    if _quarter_turned(video):
+        width, height = height, width
     return MediaInfo(
         duration_s=duration,
-        width=int(video["width"]),
-        height=int(video.get("height") or 0),
+        width=width,
+        height=height,
         fps=_rate(video.get("avg_frame_rate")) or _rate(video.get("r_frame_rate")),
         video_codec=str(video.get("codec_name") or ""),
         has_audio=audio is not None,

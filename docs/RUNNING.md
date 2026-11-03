@@ -31,7 +31,7 @@ host's secret store, never in the image or in a file in git.
 | `DATA_DIR` | `./data` | The database, secrets, uploads and media. Set it to the volume, for example `/data`. |
 | `HOST` | `127.0.0.1` | Set `0.0.0.0` in a container, so the proxy can reach the app. |
 | `PORT` | `8080` | |
-| `GAMEDAY_PASSWORD` | generated | The owner password (user `owner`). If unset, one is made on the first start and saved to `DATA_DIR/owner-password.txt` (mode 0600). The log says where it is, never what it is. |
+| `GAMEDAY_PASSWORD` | generated | The owner password (user `owner`). If unset, one is made on the first start and saved to `DATA_DIR/owner-password.txt` (mode 0600). The log says where it is, never what it is. If you set it, use at least 12 characters: with a shorter one the app refuses to start unless `HOST` is `127.0.0.1`. |
 | `GAMEDAY_SECRET_KEY` | generated | The Fernet key that encrypts stored secrets, such as a saved Meta key. If unset, it is kept in `DATA_DIR/secret.key` (0600). If you set it, never change it: a new key can't read what the old one saved. |
 | `META_API_KEY` | | If set, used instead of a key saved in the dashboard, which then shows "from the environment". |
 | `META_BUDGET_USD` | `25` | Meta calls are refused once estimated spending passes this. |
@@ -56,7 +56,12 @@ host's secret store, never in the image or in a file in git.
     minutes to send;
   - stream the upload to the app rather than buffer it all first, if it can;
   - leave the app's own security headers (`Content-Security-Policy` and the
-    rest) as they are.
+    rest) as they are;
+  - set `X-Forwarded-For` to the visitor's address (Caddy does by default).
+    After 10 wrong passwords from one address in 10 minutes, the app refuses
+    that address for 15 minutes. It takes the address from the last
+    `X-Forwarded-For` entry when the request comes from a private address
+    (the proxy), and from the connection otherwise.
 - Health check: `GET /health`, with no password, answers
   `{"ok": true, "app": "Clips Kitty Game Day", "version": "0.1.0"}`.
   Everything else needs the password.

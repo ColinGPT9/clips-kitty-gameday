@@ -116,13 +116,19 @@ class Relay:
 
     def _send(self, method: str, path: str, headers: dict, data, timeout: float) -> dict:
         try:
-            response = transport(method, self.base_url + path, headers=headers, data=data, timeout=timeout)
+            # Never followed: a redirect could send this request (and its body) to another
+            # address, a service on this machine included. The relay itself never redirects.
+            response = transport(method, self.base_url + path, headers=headers, data=data, timeout=timeout,
+                                 allow_redirects=False)
         except requests.Timeout:
             raise RelayError("network", "Your relay took too long to answer.", retryable=True) from None
         except requests.RequestException:
             # Not the exception's text: it names the URL and can carry headers.
             raise RelayError("network", "Couldn't reach your relay. Check the address and your "
                                         "internet connection.", retryable=True) from None
+        if 300 <= response.status_code < 400:
+            raise RelayError("redirect", "Your relay answered with a redirect. Use its final https:// address.",
+                             status=response.status_code)
         try:
             answer = response.json()
         except ValueError:

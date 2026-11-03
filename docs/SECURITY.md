@@ -33,6 +33,7 @@ against.
 | Threat | Protection |
 |---|---|
 | Someone else opens the dashboard | HTTP Basic auth as `owner` on every route except `GET /health`. The password comes from `GAMEDAY_PASSWORD`, or is generated on the first start into `DATA_DIR/owner-password.txt` (mode 0600). The log says where it is, never what it is |
+| Someone guessing the password | 10 wrong passwords from one address in 10 minutes lock that address out for 15 minutes (429), without its password being checked. A `GAMEDAY_PASSWORD` shorter than 12 characters stops the app from starting unless it listens on `127.0.0.1` only |
 | The password seen on the wire | HTTPS at the proxy; port 8080 is never published to the internet ([RUNNING.md](RUNNING.md)) |
 | Another site posting to the app with the owner's saved password | Every POST, PUT, PATCH and DELETE needs the header `X-Gameday-Action: 1`, or it gets 403. A page on another site can't add that header to a request to the app |
 | Script injection in the dashboard | `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`. The dashboard has no inline scripts or styles and loads nothing from other sites (`tests/test_static.py`). Also `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` |

@@ -283,8 +283,11 @@ def fallback_moments(loud: loudness_mod.Loudness, *, duration_s: float, options:
                      turns: list[Turn] | None = None) -> list[Moment]:
     """The loudest moments as plain picks, for when Muse Spark can't be asked."""
     gap = max(options.min_clip_s + 2.0, 15.0)
-    peaks = loudness_mod.peaks(loud, min_z=1.5, min_gap_s=gap)
-    if len(peaks) < options.max_clips:
+    # A muted or silent track (or one steady hum): every hop ties, so the "loudest" would
+    # just be the first minutes. It is treated as no sound: the clips spread through the video.
+    flat = loudness_mod.flat(loud)
+    peaks = [] if flat else loudness_mod.peaks(loud, min_z=1.5, min_gap_s=gap)
+    if not flat and len(peaks) < options.max_clips:
         seen = {p.t for p in peaks}
         more = [p for p in loudness_mod.peaks(loud, min_z=-1e9, min_gap_s=gap) if p.t not in seen]
         peaks += [p for p in more if all(abs(p.t - q.t) >= gap for q in peaks)]
@@ -395,11 +398,29 @@ def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: f
     start = _open_cleanly(start, play, cuts, cutaway, lo)
     if end - start < options.min_clip_s:
         start = _open_cleanly(max(lo, end - options.min_clip_s), play, cuts, cutaway, lo)
-        if end - start < options.min_clip_s:
-            end = min(hi, start + options.min_clip_s)
+    if end - start < options.min_clip_s:
+        # Still short: a cutaway in the lead-up is better than running past the cut that ends the play.
+        start = _whole_first_shot(max(lo, end - options.min_clip_s), end, cuts, lo, options.max_clip_s)
+    if end - start < options.min_clip_s:
+        # Pinned at the start of the video: grow the end, but never across another cut. A clip
+        # shorter than the minimum is better than a flash of the next scene.
+        nxt = next((c for c in cuts if c > end + 0.05), hi)
+        end = max(end, min(hi, start + options.min_clip_s, nxt))
     if end - start > options.max_clip_s:
         end = start + options.max_clip_s
     return round(start, 2), round(end, 2)
+
+
+def _whole_first_shot(start: float, end: float, cuts: list[float], lo: float, longest: float) -> float:
+    """`start`, moved back to the start of its shot when it would open on a
+    flash of that shot (under 1.5 s before the next cut) or just after its cut,
+    as long as the clip stays within `longest`."""
+    shot_start = max([c for c in cuts if c <= start + 1e-6] or [lo])
+    nxt = next((c for c in cuts if c > start + 0.05), None)
+    flash = nxt is not None and nxt - start < 1.5
+    if (flash or 0 < start - shot_start < 1.0) and end - shot_start <= longest:
+        return shot_start
+    return start
 
 
 def _refine_talk(m: Moment, *, cuts: list[float], sents: list[Sentence], lo: float, hi: float,

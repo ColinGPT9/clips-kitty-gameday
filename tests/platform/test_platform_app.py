@@ -71,6 +71,91 @@ def test_the_password_is_generated_once_and_logged_only_by_where_it_is(tmp_path,
     assert owner_password(Config.from_env({"DATA_DIR": str(tmp_path / "data"), "GAMEDAY_PASSWORD": "x"})) == "x"
 
 
+def _guarded(clock):
+    from fastapi import FastAPI
+
+    from gameday.app import Guard
+
+    inner = FastAPI()
+    inner.get("/api/status")(lambda: {"ok": True})
+    return Guard(inner, password=PASSWORD, clock=clock)
+
+
+WRONG = {"Authorization": "Basic " + base64.b64encode(b"owner:guess").decode()}
+
+
+def test_ten_wrong_passwords_lock_that_address_out_for_15_minutes(caplog):
+    now = [1000.0]
+    guard = _guarded(lambda: now[0])
+    attacker = TestClient(guard, client=("203.0.113.9", 4000))
+    for _ in range(9):
+        assert attacker.get("/api/status", headers=WRONG).status_code == 401
+    assert attacker.get("/api/status", headers=WRONG).status_code == 401  # the 10th still gets a plain answer
+    r = attacker.get("/api/status", headers=AUTH)  # locked: even the right password isn't checked
+    assert r.status_code == 429 and r.headers["Retry-After"] == "900"
+    assert r.headers["Content-Security-Policy"] == CSP and "15 minutes" in r.json()["error"]
+    assert "203.0.113.9" in caplog.text and PASSWORD not in caplog.text and "guess" not in caplog.text
+    owner = TestClient(guard, client=("198.51.100.7", 4000))
+    assert owner.get("/api/status", headers=AUTH).status_code == 200  # another address isn't affected
+    now[0] += 600
+    assert attacker.get("/api/status", headers=AUTH).headers["Retry-After"] == "300"
+    now[0] += 300
+    assert attacker.get("/api/status", headers=AUTH).status_code == 200
+
+
+def test_no_password_never_counts_and_a_right_one_forgives_typos():
+    now = [0.0]
+    guard = _guarded(lambda: now[0])
+    browser = TestClient(guard, client=("203.0.113.10", 4000))
+    for _ in range(30):
+        assert browser.get("/api/status").status_code == 401  # a browser's first try has no header
+    for _ in range(9):
+        assert browser.get("/api/status", headers=WRONG).status_code == 401
+    assert browser.get("/api/status", headers=AUTH).status_code == 200
+    for _ in range(9):
+        assert browser.get("/api/status", headers=WRONG).status_code == 401
+    assert browser.get("/api/status", headers=AUTH).status_code == 200
+    for _ in range(5):
+        browser.get("/api/status", headers=WRONG)
+    now[0] += 601  # wrong tries older than 10 minutes are forgotten too
+    for _ in range(9):
+        browser.get("/api/status", headers=WRONG)
+    assert browser.get("/api/status").status_code == 401
+
+
+def test_behind_the_proxy_each_visitor_is_counted_on_their_own():
+    guard = _guarded(lambda: 0.0)
+    caddy = TestClient(guard, client=("172.18.0.3", 4000))  # the proxy, in a container beside the app
+    for _ in range(10):
+        caddy.get("/api/status", headers={**WRONG, "X-Forwarded-For": "203.0.113.11"})
+    assert caddy.get("/api/status", headers={**AUTH, "X-Forwarded-For": "203.0.113.11"}).status_code == 429
+    assert caddy.get("/api/status", headers={**AUTH, "X-Forwarded-For": "198.51.100.8"}).status_code == 200
+    # A visitor reaching the app straight from the internet can't pick their own address.
+    direct = TestClient(guard, client=("11.22.33.44", 4000))  # any address on the internet
+    for i in range(10):
+        direct.get("/api/status", headers={**WRONG, "X-Forwarded-For": f"10.0.0.{i}"})
+    assert direct.get("/api/status", headers=AUTH).status_code == 429
+
+
+@pytest.mark.parametrize("host, code", [("0.0.0.0", 2), ("127.0.0.1", 0)])
+def test_a_short_password_is_refused_unless_the_app_is_local_only(tmp_path, monkeypatch, capsys, host, code):
+    import dotenv
+    import uvicorn
+
+    from gameday import __main__ as entry
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **kw: False)  # no .env from the checkout
+    for name, value in {"DATA_DIR": str(tmp_path / "data"), "HOST": host, "GAMEDAY_PASSWORD": "short1"}.items():
+        monkeypatch.setenv(name, value)
+    ran = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: ran.append(kw))
+    assert entry.main() == code
+    err = capsys.readouterr().err
+    assert "short1" not in err
+    assert ("shorter than 12" in err) == bool(code) and len(ran) == (0 if code else 1)
+
+
 # ---- headers ---------------------------------------------------------------------
 
 
@@ -144,6 +229,8 @@ def test_media_serves_a_jobs_clips_thumbnails_and_debug_images(gd, clips):
     "/media/jobs/{id}/clips/.clip_01.mp4",
     "/media/jobs/..%2F..%2F/clips/clip_01.mp4",
     "/media/jobs/x/clips/clip_01.mp4",
+    "/media/jobs/%C2%B2/clips/clip_01.mp4",  # "²" is a digit to str.isdigit, not to int()
+    "/media/jobs/%D9%A1/clips/clip_01.mp4",  # "١", an Arabic-Indic one
     "/media/jobs/{id}/clips/missing.mp4",
     "/media/jobs/{id}/clips/",
     "/media/owner-password.txt",
@@ -248,6 +335,39 @@ def test_an_upload_over_the_limit_is_refused_and_nothing_is_kept(gd):
     assert gd.store.jobs() == []
 
 
+def test_an_upload_cut_off_by_a_cancel_leaves_nothing_behind(make_app):
+    class Cancelled(BaseException):  # like asyncio.CancelledError: not an Exception
+        pass
+
+    def cancelled_probe(path):
+        raise Cancelled()
+
+    app = make_app(probe=cancelled_probe)
+    with pytest.raises(Cancelled):
+        app.post("/api/upload?filename=game.mp4", content=VIDEO_BYTES + b"\0" * 1000,
+                 headers={"Content-Type": "application/octet-stream"})
+    assert list(app.config.uploads_dir.iterdir()) == []
+
+
+def test_uploads_left_by_a_killed_run_are_swept_at_the_next_start(make_app):
+    from gameday.app import sweep_uploads
+
+    gd = make_app()
+    r = gd.post("/api/upload?filename=kept.mp4", content=VIDEO_BYTES + b"\0" * 100,
+                headers={"Content-Type": "application/octet-stream"})
+    assert r.status_code == 200
+    uploads = gd.config.uploads_dir
+    [kept] = list(uploads.iterdir())
+    stray, fresh = uploads / "0123abcd_cut.mp4", uploads / "4567abcd_arriving.mp4"
+    stray.write_bytes(b"part of a game")
+    fresh.write_bytes(b"part of a game")
+    hour_ago = os.stat(stray).st_mtime - 7200
+    for path in (kept, stray):
+        os.utime(path, (hour_ago, hour_ago))
+    assert sweep_uploads(gd.store, gd.config) == 1
+    assert sorted(p.name for p in uploads.iterdir()) == sorted([kept.name, fresh.name])
+
+
 def test_a_file_that_is_not_a_video_is_refused_and_removed(gd):
     r = gd.post("/api/upload?filename=notes.mp4", content=b"just some text",
                 headers={"Content-Type": "application/octet-stream"})
@@ -318,6 +438,18 @@ def test_testing_the_key_makes_one_cheap_call(make_app):
     meta.bad_key = True
     assert app.post("/api/meta/test").json() == {"ok": False, "error": "Meta refused the key (401)."}
     assert make_app().post("/api/meta/test").json() == {"ok": False, "error": "No Meta key is saved."}
+
+
+def test_a_key_test_stopped_by_the_budget_says_so(make_app):
+    from gameday.types import BudgetExceeded
+
+    class Spent(FakeMeta):
+        def test_key(self):
+            raise BudgetExceeded("Meta calls are paused: about $25.00 is spent.")
+
+    app = make_app(meta_factory=lambda: Spent())
+    assert app.post("/api/meta/test").json() == {"ok": False, "budget": True,
+                                                 "error": "Meta calls are paused: about $25.00 is spent."}
 
 
 def test_secrets_are_fernet_tokens_under_the_key_file(tmp_path):
@@ -439,7 +571,12 @@ def test_a_queued_job_can_be_cancelled_and_retried(gd):
     assert new["id"] != job_id and new["state"] == "queued" and new["video"]["id"] == gd.store.get_job(job_id)[
         "video_id"]
     assert gd.post(f"/api/jobs/{new['id']}/retry").status_code == 409  # queued: nothing to retry
+    # A second click on the old job (or another tab) never queues a second paid run.
+    again = gd.post(f"/api/jobs/{job_id}/retry")
+    assert again.status_code == 409 and again.json()["error"] == f"This job was already retried as job {new['id']}."
     assert [j["id"] for j in gd.get("/api/jobs").json()] == [new["id"], job_id]
+    gd.post(f"/api/jobs/{new['id']}/cancel")  # the retry itself stopped: the old one may go again
+    assert gd.post(f"/api/jobs/{job_id}/retry").status_code == 200
 
 
 def test_a_finished_job_lists_its_clips_with_media_urls(gd):

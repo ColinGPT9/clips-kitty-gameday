@@ -609,7 +609,15 @@
     let meta = '–';
     if (stage && state !== 'waiting' && state !== 'skipped') {
       const cost = li.dataset.stage === 'render' && !stage.cost_usd ? 'no API cost' : usd(stage.cost_usd, true);
-      meta = `${dur(stage.seconds)} · ${cost}`;
+      // One long Meta call reports its seconds only when it returns: while the stage runs,
+      // count on from when this value was first seen, so the stepper never looks stuck.
+      let seconds = Number(stage.seconds) || 0;
+      if (state === 'running' && job.stage === li.dataset.stage) {
+        const seen = `${job.id}:${seconds}`;
+        if (li.dataset.seen !== seen) { li.dataset.seen = seen; li.dataset.since = String(Date.now()); }
+        seconds += Math.max(0, Date.now() - Number(li.dataset.since)) / 1000;
+      }
+      meta = `${dur(seconds)} · ${cost}`;
     }
     setText(li.querySelector('.stage-meta'), stage && stage.note ? `${meta} · ${stage.note}` : meta);
   }
@@ -908,7 +916,7 @@
     renderOffersHead();
     const reviews = S.reviews || [];
     show('offers-empty', S.reviews !== null && !reviews.length);
-    keyed($('offers'), reviews, (r) => r.id, (r) => JSON.stringify(r), buildOffer);
+    keyed($('offers-list'), reviews, (r) => r.id, (r) => JSON.stringify(r), buildOffer);
   }
 
   function buildOffer(review) {
@@ -1044,8 +1052,11 @@
     setText('relay-url-shown', set.relay_url || '');
     show('relay-form', relayKnown && !steps.relay);
     const urlInput = $('relay-url');
-    if (!urlInput.value && document.activeElement !== urlInput && set.relay_url) urlInput.value = set.relay_url;
+    const env = (S.ra && S.ra.env) || {};
+    const knownUrl = set.relay_url || env.relay_url || '';
+    if (!urlInput.value && document.activeElement !== urlInput && knownUrl) urlInput.value = knownUrl;
     $('relay-connect').disabled = !urlInput.value.trim();
+    $('relay-key').placeholder = env.enrolment_key ? 'Set where the app runs: leave it empty' : '';
 
     // 3. PIN
     paintStep('step-pin', steps.pin, noRelay ? locked : steps.pin ? 'PIN set.' : 'No PIN yet.');
@@ -1122,6 +1133,7 @@
     setText('approvals-why', noRelay ? locked : !set.remote_approvals && why ? why
       : 'Finished games are offered on your phone. Nothing is posted until you approve it there with your PIN.');
     show('approvals-more', !!set.remote_approvals);
+    if (document.activeElement !== $('offer-other')) $('offer-other').checked = set.basketball_only === false;
     const preferred = set.preferred_destinations || [];
     for (const platform of ['instagram', 'facebook']) {
       const input = $('pref-' + platform);
@@ -1233,6 +1245,7 @@
       const started = Date.now();
       const got = await api('POST', '/api/meta/test');
       if (got && got.ok) note('meta-note', `Key works. Meta answered in ${((Date.now() - started) / 1000).toFixed(1)}s.`, 'ok');
+      else if (got && got.budget) note('meta-note', got.error, 'warn');
       else note('meta-note', 'Meta turned the key down: ' + ((got && got.error) || 'no reason given.'), 'bad');
     }));
     $('meta-remove').addEventListener('click', async (e) => {
@@ -1424,6 +1437,8 @@
       patchRA({ approval_hours: Number(e.target.value) }, 'approvals-note', 'Saved.')));
     $('remind-minutes').addEventListener('change', (e) => act(e.currentTarget, 'approvals-note', () =>
       patchRA({ remind_minutes: Number(e.target.value) }, 'approvals-note', 'Saved.')));
+    $('offer-other').addEventListener('change', (e) => act(e.currentTarget, 'approvals-note', () =>
+      patchRA({ basketball_only: !e.target.checked }, 'approvals-note', 'Saved.')));
 
     // Watched folders
     $('watch-path').addEventListener('input', () => { $('watch-add').disabled = !$('watch-path').value.trim(); });
@@ -1553,7 +1568,7 @@
       $('events').replaceChildren();
       renderEvents();
     });
-    $('offers').addEventListener('click', (e) => {
+    $('offers-list').addEventListener('click', (e) => {
       const button = e.target.closest('button[data-act="offer"]');
       if (button) offerAction(button);
     });

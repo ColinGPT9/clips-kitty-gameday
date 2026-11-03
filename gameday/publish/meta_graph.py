@@ -77,7 +77,8 @@ def classify(code: str, message: str, meta: dict | None = None) -> PublishError:
     if code in ("not_approved", "expired", "not_connected", "not_registered"):
         return PublishError(message)
     if m_code == 190 or code == "token_expired":
-        return AuthRequired(f"Your {platform} connection has expired. Reconnect it on the dashboard's phone page.")
+        return AuthRequired(f"Your {platform} connection has expired. Reconnect it in the dashboard's Setup, "
+                            "under Facebook + Instagram.")
     if m_code == 10 or 200 <= m_code <= 299:
         return AuthRequired(f"{platform} refused the permission this needs. Reconnect the account and "
                             "allow publishing when Meta asks.")
@@ -106,10 +107,12 @@ class MetaGraph:
         self.relay = relay
         self.sleep = sleep
         self.clock = clock
+        self.steps = 0  # Graph API requests asked of the relay, the upload included (Usage counts them)
 
     def _step(self, op: str, ctx: dict, **params) -> dict:
         from gameday.remote_approval.relay import RelayError
 
+        self.steps += 1
         try:
             return self.relay.meta(op, {**ctx, **params})
         except RelayError as e:
@@ -126,6 +129,7 @@ class MetaGraph:
                  "offset": "0", "file_size": str(size)}
         if on_progress:
             on_progress(f"Uploading to {platform.title()}", 0, size)
+        self.steps += 1
         try:
             self.relay.upload_chunk(query, path, 0, size)
         except RelayError as e:
@@ -184,16 +188,42 @@ class MetaGraph:
             return None
 
         if not self._poll(ready, should_cancel):
-            return Posted("instagram", state="processing", warnings=[
-                "Instagram is still processing this video, so it was not published yet. "
-                "Approve it again later if it does not appear."])
-        published = self._step("ig_publish", ctx, container_id=container)
+            # The publish step was never sent, so nothing can go up from this upload:
+            # a failure, which Retry failed may safely send again.
+            raise PublishError("Instagram was still processing this video after 10 minutes, so it was not "
+                               "published. Retry it to upload it again.")
+        try:
+            published = self._step("ig_publish", ctx, container_id=container)
+        except PublishError as e:
+            if not getattr(e, "unanswered", False) or isinstance(e, RateLimited):
+                raise
+            return self._lost_instagram_publish(ctx, container)
         media_id = str(published.get("media_id") or "")
         if not media_id:
             raise PublishError("Instagram did not confirm the post. Check the account before trying again.")
         url = self._link_of_live_post("ig_permalink", ctx, media_id)
         return Posted("instagram", post_id=media_id, url=url,
                       warnings=[] if url else ["Instagram confirmed the post but did not return its link yet."])
+
+    def _lost_instagram_publish(self, ctx: dict, container: str) -> Posted:
+        """media_publish was sent, but its answer never came back (no answer, or
+        the relay's 5xx): the Reel may be up. The container says so once it is.
+        Never reported failed, since Retry failed would then post a second Reel;
+        not cancellable either, for the same reason (two minutes at most)."""
+        def up():
+            try:
+                status = self._step("ig_status", ctx, container_id=container)
+            except PublishError:
+                return None
+            return status if str(status.get("status_code") or "").upper() == "PUBLISHED" else None
+
+        if self._poll(up, deadline=FINISH_CHECK):
+            return Posted("instagram", state="published", warnings=[
+                "Instagram's answer to the publish step was lost, but the Reel shows as published. "
+                "Its link isn't known: find it on the account."])
+        return Posted("instagram", state="processing", warnings=[
+            "Instagram's answer to the publish step was lost, so it isn't known whether the Reel went up. "
+            "Check the account before trying again."])
 
     def _link_of_live_post(self, op: str, ctx: dict, media_id: str) -> str:
         """The permalink of a post the API has already confirmed with its id.

@@ -8,6 +8,10 @@ This is the contract between the platform (routes) and the dashboard
 - Everything except `GET /health` needs HTTP Basic auth: user `owner`, and the
   password from `GAMEDAY_PASSWORD` (or the generated one, see Environment).
   A wrong or missing password gets 401 with `WWW-Authenticate: Basic`.
+  After 10 wrong passwords (not missing ones) from one address within 10
+  minutes, that address gets 429 with `Retry-After` for 15 minutes, whatever
+  password it sends. Behind a proxy on a private address, the address is the
+  last `X-Forwarded-For` entry.
 - Every POST, PUT, PATCH and DELETE also needs the header `X-Gameday-Action: 1`.
   Without it the answer is 403. That way a page on another site can't post to the app.
 - An error answer is `{"error": "<a sentence for people>"}` with a 4xx or 5xx status.
@@ -53,7 +57,8 @@ The relay, PIN, Muse and accounts are in `GET /remote-approval/status` (below).
   The key is never sent back by any route.
 - `DELETE /api/meta/key` gives `{"saved": false}`.
 - `POST /api/meta/test` gives `{"ok": true}`, or `{"ok": false, "error": "..."}`.
-  It makes one cheap call.
+  It makes one cheap call. When `META_BUDGET_USD` stopped the call before it
+  reached Meta, the answer also has `"budget": true`.
 
 ### Upload
 `POST /api/upload?filename=game.mp4`, where the body is the raw file
@@ -91,7 +96,7 @@ The dashboard sends it with `XMLHttpRequest` so it can show upload progress.
 | `GET /api/jobs?limit=20` | `[Job]`, newest first, without `clips_list` |
 | `GET /api/jobs/{id}` | `Job` with `"clips_list": [Clip]` |
 | `POST /api/jobs/{id}/cancel` | `Job` (queued or running) |
-| `POST /api/jobs/{id}/retry` | the new `Job` (failed or cancelled only) |
+| `POST /api/jobs/{id}/retry` | the new `Job` (failed or cancelled only; 409 while an earlier retry of it is queued, running or done) |
 
 `Job`:
 ```json

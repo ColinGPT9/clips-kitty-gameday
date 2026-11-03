@@ -118,6 +118,16 @@ def test_without_spark_the_loudest_moments_get_plain_titles():
     assert len(silent) == 2
 
 
+@pytest.mark.parametrize("level", [0.0, 0.01])  # a muted track, and one steady hum
+def test_a_silent_audio_track_spreads_the_clips_like_no_sound_at_all(level):
+    rate, hour = 100, 3600.0
+    track = loudness.from_samples(np.full(int(hour * rate), level, dtype=np.float32), rate)
+    assert loudness.flat(track) and not loudness.flat(roar(at=30.0))
+    picks = moments.fallback_moments(track, duration_s=hour, options=PipelineOptions(max_clips=8))
+    plays = sorted(p.play_s for p in picks)
+    assert len(plays) == 8 and plays[0] < 400 and plays[-1] > 3200  # through the game, not its first minutes
+
+
 # --- the owner's clip rules ------------------------------------------------------------
 
 def test_the_clip_ends_at_the_broadcast_cut_after_the_call():
@@ -164,6 +174,20 @@ def test_it_never_opens_on_a_cutaway_or_a_flash_of_the_shot_before():
     start, _ = moments.refine(moment(start=85.0), cuts=[86.0, 89.0], sents=[s(100.5, 101.5, "Yes!")],
                               duration_s=400.0, options=OPTS)
     assert start == 86.0  # without SAM it only skips the flash
+
+
+def test_a_short_clip_grows_its_lead_up_rather_than_running_past_the_cut_that_ends_it():
+    # The lead-up shot 88-97 is a crowd cutaway, the call ends the play at the cut 102.8 (then a replay).
+    def cutaway(a, b):
+        return (a, b) == (88.0, 97.0)
+
+    start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 102.8, 108.0],
+                                sents=[s(100.5, 102.0, "Blocked!")], duration_s=400.0, options=OPTS, cutaway=cutaway)
+    assert end == pytest.approx(102.8) and end - start == pytest.approx(OPTS.min_clip_s)
+    # A play in the first seconds: the end may grow, but never across another cut.
+    start, end = moments.refine(moment(play=3.0, start=0.0, category="blocks"), cuts=[5.5, 9.0],
+                                sents=[s(3.2, 4.5, "Blocked!")], duration_s=400.0, options=OPTS)
+    assert (start, end) == (0.0, 9.0)
 
 
 def test_it_starts_a_few_seconds_before_the_call():

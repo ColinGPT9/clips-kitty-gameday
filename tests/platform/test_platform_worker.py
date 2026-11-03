@@ -26,6 +26,21 @@ def upload(app, name="game.mp4", body=None) -> int:
     return r.json()["job_id"]
 
 
+def test_connections_of_finished_pool_threads_do_not_pile_up(tmp_path):
+    """Muse Voice and SAM run in a new pool each job, and its threads use the ledger."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from gameday.store import Store
+
+    db = Store(tmp_path / "pool.db")
+    for _ in range(5):  # five jobs
+        with ThreadPoolExecutor(3) as pool:
+            list(pool.map(lambda _: db.get_flag("x", ""), range(9)))
+    db.get_flag("x", "")  # the next connection opened closes the ones left by dead threads
+    assert len(db._all) == 1
+    db.close_all()
+
+
 # ---- one job ------------------------------------------------------------------------
 
 
@@ -50,6 +65,20 @@ def test_a_job_runs_in_its_own_folder_and_its_stages_are_timed(make_app):
     assert job["stages"]["captions"]["note"].startswith("Nothing was sent to your phone")
     assert all(v["seconds"] >= 0 for v in job["stages"].values())
     assert [c["category"] for c in job["clips_list"]] == [p[0] for p in PLAYS]
+
+
+def test_a_thumbnail_that_failed_to_render_is_not_offered_as_a_poster(make_app):
+    class NoFirstThumb(FakePipeline):
+        def __call__(self, *args, **kwargs):
+            result = super().__call__(*args, **kwargs)
+            result.clips[0].thumb.unlink()  # both ffmpeg tries failed: the path, but no file
+            return result
+
+    app = make_app(pipeline=NoFirstThumb())
+    job_id = upload(app)
+    app.worker.run_next_job()
+    clips = sorted(app.get(f"/api/clips?job_id={job_id}").json(), key=lambda c: c["index"])
+    assert clips[0]["thumb_url"] is None and clips[1]["thumb_url"].endswith("/clip_02.jpg")
 
 
 def test_a_video_the_engine_cant_process_fails_the_job_with_its_words(make_app):
@@ -171,8 +200,8 @@ def test_the_captions_stage_says_why_nothing_was_offered(make_app):
     job_id = upload(app)
     app.worker.run_next_job()
     note = app.get(f"/api/jobs/{job_id}").json()["stages"]["captions"]["note"]
-    assert note == ("Nothing was sent to your phone. Connect your Muse agent, or turn on WhatsApp messages on the "
-                    "dashboard's phone page.")
+    assert note == ("Nothing was sent to your phone. In the dashboard's Setup, make a Muse key or turn on Send me "
+                    "WhatsApp messages.")
     # On, but this app was never registered with a relay.
     from gameday.remote_approval import settings as ra_settings
 
@@ -194,11 +223,30 @@ def test_talk_videos_are_offered_only_once_the_owner_opts_in(make_app):
     app.worker.run_next_job()
     stage = app.get(f"/api/jobs/{job_id}").json()["stages"]["captions"]
     assert stage["state"] == "skipped" and stage["note"].startswith("Only basketball games are offered")
-    ra_settings.save(app.store, {"basketball_only": False})
+    assert "Offer other videos too" in stage["note"]
+    # What the dashboard's "Offer other videos too" box sends.
+    assert app.patch("/remote-approval/settings", json={"basketball_only": False}).status_code == 200
+    assert ra_settings.load(app.store)["basketball_only"] is False
     job_id = upload(app, "talk.mp4")
     app.worker.run_next_job()
     [review] = store.reviews_for_job(app.store, job_id)
     assert review["summary"]["kind"] == "video"
+
+
+def test_the_notes_name_switches_the_dashboard_really_has():
+    from pathlib import Path
+
+    from gameday.remote_approval import notifier
+
+    page = (Path(notifier.__file__).parents[1] / "static" / "index.html").read_text(encoding="utf-8")
+    off = {"whatsapp_enabled": False, "notify_on_finish": True, "muse": {}}
+    notes = [notifier.why_not_offered(off), notifier.why_not_offered({**off, "whatsapp_enabled": True,
+                                                                        "notify_on_finish": False})]
+    labels = ["Setup", "Make a Muse key", "Send me WhatsApp messages", "When a game's clips are ready",
+              "Offer other videos too", "Publishing"]
+    for label in labels:
+        assert label in page, label
+    assert all(label.lower() in " ".join(notes).lower() for label in labels[:4])
 
 
 def test_a_failed_job_queues_the_plain_failure_message(make_app):

@@ -80,6 +80,11 @@ def tick(db, state: TickState, *, relay: Relay | None = None, emit=None, clock=t
     """One pass, if one is due. Returns how many uploads it queued."""
     config = ra_settings.load(db)
     if not (config["whatsapp_enabled"] or ra_settings.muse_connected(config)):
+        # The phone can't be reached, but what is only local still moves on: links
+        # expire, and uploads already approved (they run all the same) settle.
+        changed = expire_due(db, now or store.now_utc()) + settle_publishing(db, config)
+        if changed and emit:
+            emit({"type": "remote_approval", "changed": changed})
         return 0
     mono = clock()
     # A message waiting to go (a job just finished) doesn't wait for the
@@ -478,7 +483,7 @@ def can_enable_remote_approval(db) -> str:
     config = ra_settings.load(db)
     if not ra_settings.muse_connected(config):
         if not config["whatsapp_enabled"]:
-            return "Connect your Muse agent, or turn on WhatsApp notifications, first."
+            return "Make a Muse key, or turn on Send me WhatsApp messages, first."
         if (config["pairing"] or {}).get("state") != "confirmed":
             return "Pair and confirm your WhatsApp number, or connect your Muse agent, first."
     if not config["pin_set"]:
@@ -559,9 +564,11 @@ def cancel_from_app(db, review_id: int) -> dict:
     if review is None:
         raise KeyError(review_id)
     if review["state"] == states.PUBLISH_QUEUED:
-        commands.cancel_queued(db, review_id)
+        # Refused before anything changes: an upload already started can't be
+        # stopped, and the rest stay queued with it.
         if commands.running_jobs(db, review_id):
             raise states.IllegalMove(review["state"], states.CANCELLED)
+        commands.cancel_queued(db, review_id, where="the app")
     review = store.move(db, review_id, states.CANCELLED, actor="desktop", detail="cancelled in the app")
     relay = client(db)
     if relay is not None and review["approval_id"]:
