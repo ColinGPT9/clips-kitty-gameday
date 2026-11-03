@@ -153,25 +153,16 @@ approve or post anything. What protects each step:
 
 ## Costs
 
-Every figure is an estimate from Meta's published prices. The dashboard
-shows the running total against your budget.
+What running it cost me, measured. The Meta figures are estimates from
+Meta's published prices, the same ones the dashboard shows.
 
-| Model | Price (estimate) |
+| | What it cost me |
 |---|---|
-| Muse Voice | $0.18 per hour of audio |
-| Muse Spark | $1.25 per million input tokens, $0.15 per million cached input tokens, $4.25 per million output tokens |
-| SAM 3.1 | $0.20 per 1,000 frames |
+| **Meta models, per game video** | **$0.65** for a 22.5-minute game that made 8 clips, about **8 cents a clip**. Muse Voice cost $0.07, Muse Spark $0.02 and SAM 3.1 $0.56. Captions cost under a cent. Posting the Reels to Instagram and Facebook is free. |
+| **Hosting: the server** (AWS Lightsail, 2 vCPUs, 4 GB) | TODO(measured): the plan's price, added once the demo server is running |
+| **Hosting: the relay** (Cloudflare Workers) | $0, on Cloudflare's free plan |
 
-- `META_BUDGET_USD` (default $25): once estimated spending passes it, Meta
-  calls are refused.
-- **Measured on a real game (3 Nov 2026):** a 22.5-minute game made 8
-  vertical clips for about **$0.65** of Meta usage, about **8 cents a
-  clip**: Muse Voice $0.07, Muse Spark $0.02 and SAM 3.1 $0.56. It took
-  under 4 minutes on a desktop PC. See [docs/TEST_LOG.md](docs/TEST_LOG.md).
-- **Posting adds almost nothing.** Reels go to Instagram and Facebook
-  through Meta's Graph API, which charges no fee. Muse Spark's captions
-  for an offer cost under a cent: $0.004 for a one-clip offer, measured.
-- The relay fits in Cloudflare's free plan for one owner.
+The game run is from 3 Nov 2026; see [docs/TEST_LOG.md](docs/TEST_LOG.md).
 
 ## Tests
 
