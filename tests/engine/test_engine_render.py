@@ -114,6 +114,42 @@ def test_a_phone_video_stored_sideways_is_probed_as_ffmpeg_decodes_it(tmp_path, 
     assert (tmp_path / f"phone_{turn}_clip.cmd").exists() == (turn == 180)
 
 
+def _frames(video):
+    got = subprocess.run([media.FFPROBE, "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries",
+                          "stream=nb_read_frames,start_time", "-of", "csv=p=0", str(video)],
+                         capture_output=True, text=True, check=True).stdout.strip().split(",")
+    return float(got[0]), int(got[1])
+
+
+def test_a_transport_stream_clip_and_proxy_start_on_their_first_frame(tmp_path):
+    """A .ts capture with a keyframe every 2 s: an input seek lands past the keyframe and
+    ffmpeg drops frames up to the next one, unless the span is trimmed exactly."""
+    from gameday.engine import ff
+
+    src = tmp_path / "capture.ts"
+    subprocess.run([media.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-f",
+                    "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "10", "-c:v", "libx264", "-g", "60",
+                    "-keyint_min", "60", "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-f", "mpegts",
+                    str(src)], check=True)
+    assert ff.seek_plan(src, 5.0) == (0.0, 5.0)
+    out = render.render(src, media.probe(src), 5.0, 7.0, np.full(60, 0.5), tmp_path / "ts_clip.mp4", tmp_path)
+    assert _frames(out) == (pytest.approx(0.0, abs=0.01), 60)
+    assert media.probe(out).duration_s == pytest.approx(2.0, abs=0.1)
+    proxy = ff.make_proxy(src, tmp_path / "ts_proxy.mp4", start=5.0, seconds=4.0, fps=10)
+    assert _frames(proxy) == (pytest.approx(0.0, abs=0.01), 40)
+    # The proxy's first frame is the source's frame at 5 s (decoded from the start, so exact).
+    exact = tmp_path / "exact.png"
+    first = tmp_path / "first.png"
+    subprocess.run([media.FFMPEG, "-v", "error", "-y", "-i", str(src), "-ss", "5", "-frames:v", "1", str(exact)],
+                   check=True)
+    subprocess.run([media.FFMPEG, "-v", "error", "-y", "-i", str(proxy), "-frames:v", "1", str(first)], check=True)
+    with Image.open(exact) as a, Image.open(first) as b:
+        diff = np.abs(np.asarray(a.convert("L"), dtype=float) - np.asarray(b.convert("L"), dtype=float)).mean()
+    assert diff < 6
+    # An MP4 seeks exactly by itself: nothing changes for it.
+    assert ff.seek_plan(make_video(tmp_path / "plain.mp4", "testsrc2=size=320x180:rate=30", 2), 1.0) == (1.0, 0.0)
+
+
 def test_thumbnail_and_debug_image(tmp_path):
     src = make_video(tmp_path / "game.mp4", "testsrc2=size=1280x720:rate=30", 4)
     out = render.render(src, media.probe(src), 0.0, 3.0, np.full(90, 0.2), tmp_path / "clip_02.mp4", tmp_path)

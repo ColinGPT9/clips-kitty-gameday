@@ -152,7 +152,9 @@ def render(source: Path, info: MediaInfo, start_s: float, end_s: float, left_sha
     ww, wh, top, pans = window_px(info.width, info.height)
     xs = left_pixels(left_share, info.width, ww) if pans else np.zeros(1, dtype=int)
     stem = out.stem
-    chain = []
+    seek_at, skip = ff.seek_plan(source, start_s)
+    # Trimmed first, so the frame times below (fps, sendcmd) count from the clip's start.
+    chain = [f"trim=start={skip:.3f},setpts=PTS-STARTPTS"] if skip else []
     rate = output_fps(info.fps)
     if rate:
         chain.append(f"fps={rate:g}")
@@ -160,7 +162,7 @@ def render(source: Path, info: MediaInfo, start_s: float, end_s: float, left_sha
         write_commands(tmp / f"{stem}.cmd", xs)
         chain.append(f"sendcmd=f={stem}.cmd")
     chain += [f"crop@pan=w={ww}:h={wh}:x={int(xs[0])}:y={top}", f"scale={OUT_W}:{OUT_H}:flags=lanczos", "setsar=1"]
-    args = ["-ss", f"{start_s:.3f}", "-t", f"{seconds:.3f}", "-i", str(source)]
+    args = ["-ss", f"{seek_at:.3f}", "-t", f"{seconds + skip:.3f}", "-i", str(source)]
     graph = [f"[0:v]{','.join(chain)},format=yuv420p[base]"]
     card_rate = rate or (info.fps if 1 <= info.fps <= MAX_FPS + 0.5 else MAX_FPS)
     next_input = 1
@@ -174,7 +176,10 @@ def render(source: Path, info: MediaInfo, start_s: float, end_s: float, left_sha
         video = "[v]"
     else:
         video = "[base]"
-    if info.has_audio:
+    if info.has_audio and skip:
+        graph.append(f"[0:a:0]atrim=start={skip:.3f},asetpts=PTS-STARTPTS[sound]")
+        audio = "[sound]"
+    elif info.has_audio:
         audio = "0:a:0"
     else:
         args += ["-f", "lavfi", "-t", f"{seconds:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
