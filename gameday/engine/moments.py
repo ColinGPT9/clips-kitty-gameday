@@ -116,7 +116,9 @@ and the commentators get loud at big plays). Pick the plays worth posting as sho
 
 For each play give:
 - play_s: the moment the play happens (the shot goes in, the dunk, the block, the steal). Commentators call a play \
-just after it happens, so play_s is usually 0 to 2 seconds before the words that call it.
+just after it happens, so play_s is usually 0 to 2 seconds before the words that call it. Always the live play: \
+when they talk over a replay of it a little later ("let's watch that again", "another look"), the play is still \
+the live one, at its first call.
 - start_s: the start of the same possession's lead-up (bringing the ball up, the pass, the drive), a few seconds \
 before the call, usually 6 to 15 seconds before play_s.
 - end_s: when the commentators finish talking about the play. Never include a new sentence about something else.
@@ -125,7 +127,8 @@ before the call, usually 6 to 15 seconds before play_s.
 - title: a short title for viewers, in sentence case, at most 50 characters, no hashtags, no emojis. Use a \
 name only if the commentators said it.
 - team and player: as the commentators said them, or "" when they didn't.
-- evidence: the commentators' words that show the play happened, copied exactly from the transcript.
+- evidence: the commentators' words that show the play happened, copied exactly from the transcript; from the \
+live call, not the replay.
 - score: 0 to 100, how good the clip is. Big plays, clutch moments and a loud crowd score high; an ordinary \
 basket scores low.
 
