@@ -422,12 +422,15 @@ def test_the_credit_line_is_trimmed_checked_and_kept_for_the_next_game(gd):
     assert gd.patch("/api/settings", json={"caption_credit": "x" * 300}).status_code == 200
     assert gd.patch("/api/settings", json={"caption_credit": "One\n\nThree"}).status_code == 200
     for bad, words in (("x" * 301, "at most 300 characters"), ("1\n2\n3\n4", "at most 3 lines"),
-                       (5, "must be text"), (None, "must be text"), (["Footage"], "must be text"),
-                       ("Footage \ud83d", "broken character")):
+                       (5, "must be text"), (None, "must be text"), (["Footage"], "must be text")):
         r = gd.patch("/api/settings", json={"caption_credit": bad})
         assert r.status_code == 400, bad
         error = r.json()["error"]
         assert words in error and error.startswith("The credit line") and error.endswith("."), error
+    # Half an emoji from a broken paste, sent as a browser would (escaped JSON): refused, not a 500 later.
+    r = gd.patch("/api/settings", content=b'{"caption_credit": "Footage \\ud83d"}',
+                 headers={"Content-Type": "application/json"})
+    assert r.status_code == 400 and "broken character" in r.json()["error"]
     assert gd.get("/api/settings").json()["caption_credit"] == "One\n\nThree"  # a refusal changes nothing
     gd.patch("/api/settings", json={"caption_credit": DVIDS})
     r = gd.post("/api/upload?filename=game.mp4", content=VIDEO_BYTES + os.urandom(1000),
