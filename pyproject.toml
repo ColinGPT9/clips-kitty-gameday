@@ -1,0 +1,48 @@
+[project]
+name = "clips-kitty-gameday"
+version = "0.1.0"
+description = "Turns a basketball game into vertical clips with Meta's models, and asks on your phone before posting."
+readme = "README.md"
+license = {text = "AGPL-3.0-or-later"}
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32",
+    "meta-sam-parser>=0.1.0",
+    "numpy>=2.0",
+    "pillow>=11.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "cryptography>=43.0",
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27", "ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["gameday*"]
+
+[tool.setuptools.package-data]
+gameday = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-m \"not live\""
+markers = [
+    "live: calls Meta's real API (costs money; needs META_API_KEY)",
+    "media: runs ffmpeg",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["meta-relay"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
