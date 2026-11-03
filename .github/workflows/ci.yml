@@ -53,6 +53,23 @@ jobs:
         run: |
           .venv/bin/pip install -q -r requirements-dev.txt
           .venv/bin/python -m pytest -q
+      - name: Drive sync script, with a local folder standing in for Google Drive
+        run: |
+          sudo apt-get install -y -q rclone
+          # The real setup's config line (the token is fake; no network is needed to save it).
+          rclone config create cicheck drive scope=drive.readonly \
+            token='{"access_token":"x","token_type":"Bearer","refresh_token":"y","expiry":"2030-01-01T00:00:00Z"}' --non-interactive
+          rclone listremotes | grep -qx 'cicheck:' && rclone config delete cicheck
+          # "gdrive" points at a local folder here, so the script finds a remote and asks no token.
+          mkdir -p "$RUNNER_TEMP/fake-drive/Game Day"
+          printf 'not really a video' > "$RUNNER_TEMP/fake-drive/Game Day/game one.mp4"
+          printf 'ignored' > "$RUNNER_TEMP/fake-drive/Game Day/notes.txt"
+          rclone config create gdrive alias remote="$RUNNER_TEMP/fake-drive"
+          sudo bash scripts/setup-drive-sync.sh "Game Day"
+          sleep 3
+          test -f "/srv/gameday-watch/game one.mp4"
+          test ! -e /srv/gameday-watch/notes.txt
+          systemctl is-active --quiet gameday-drive.timer
 
   relay:
     name: Relay (Node 22)
