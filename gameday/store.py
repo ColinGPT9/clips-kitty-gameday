@@ -249,6 +249,25 @@ def loads(value, default):
     return out if isinstance(out, type(default)) else default
 
 
+def media_url(data_dir: Path, path: str | Path | None) -> str | None:
+    """The /media URL of a file under DATA_DIR/media/jobs/<id>/clips/, or None
+    for anything else (no other file is ever served)."""
+    if not path:
+        return None
+    try:
+        file = Path(path).resolve()
+        jobs = (Path(data_dir) / "media" / "jobs").resolve()
+        clips = file.parent
+        job_dir = clips.parent
+    except (OSError, ValueError):
+        return None
+    if clips.name != "clips" or job_dir.parent != jobs or not job_dir.name.isdigit():
+        return None
+    if file.suffix.lower() not in (".mp4", ".jpg", ".png"):
+        return None
+    return f"/media/jobs/{int(job_dir.name)}/clips/{file.name}"
+
+
 def fresh_stages() -> dict:
     return {s: {"state": "waiting", "seconds": 0.0, "cost_usd": 0.0, "note": ""} for s in STAGES}
 
@@ -434,7 +453,8 @@ class Store:
 
     def add_job(self, video_id: int, options: dict, *, retry_of: int | None = None) -> int:
         return int(self._write(
-            "INSERT INTO jobs (video_id, state, stages, options, retry_of, created_at) VALUES (?, 'queued', ?, ?, ?, ?)",
+            "INSERT INTO jobs (video_id, state, stages, options, retry_of, created_at) "
+            "VALUES (?, 'queued', ?, ?, ?, ?)",
             (int(video_id), json.dumps(fresh_stages()), json.dumps(options), retry_of, time.time())).lastrowid)
 
     def get_job(self, job_id: int) -> sqlite3.Row | None:
@@ -472,6 +492,19 @@ class Store:
         conn.commit()
         return self.get_job(row["id"]) if row is not None else None
 
+    def cancel_job(self, job_id: int) -> str | None:
+        """"cancelled" for a queued job (it never starts), "stopping" for a
+        running one (the pipeline stops at its next safe point), None for a
+        job that has already finished."""
+        cur = self._write("UPDATE jobs SET state = 'cancelled', message = 'Cancelled', finished_at = ?, "
+                          "cancel_requested = 0 WHERE id = ? AND state = 'queued'", (time.time(), int(job_id)))
+        if cur.rowcount:
+            self.add_event("info", "job", f"Job {job_id} was cancelled.", job_id=int(job_id))
+            return "cancelled"
+        cur = self._write("UPDATE jobs SET cancel_requested = 1, message = 'Stopping' "
+                          "WHERE id = ? AND state = 'running'", (int(job_id),))
+        return "stopping" if cur.rowcount else None
+
     def queued_count(self) -> int:
         return int(self.conn.execute("SELECT COUNT(*) FROM jobs WHERE state = 'queued'").fetchone()[0])
 
@@ -484,7 +517,7 @@ class Store:
         now = time.time()
         for row in rows:
             stages = loads(row["stages"], fresh_stages())
-            for name, info in stages.items():
+            for info in stages.values():
                 if info.get("state") == "running":
                     info["state"] = "failed"
                     info["note"] = "The app restarted"
