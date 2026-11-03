@@ -49,9 +49,48 @@ players" (a hint for Muse Spark), and title cards.
 
 ## How it works
 
+```mermaid
+flowchart TD
+    F["Game video<br/>uploaded, or copied into a watched folder"]
+    subgraph APP["The app: one Python process"]
+        V["Muse Voice<br/>the commentary, with times"]
+        S["Muse Spark<br/>picks the plays · titles · captions"]
+        M["SAM 3.1<br/>finds the ball in each play"]
+        R["ffmpeg<br/>cuts and renders each clip at 9:16"]
+        O["The offer<br/>the game's best clips"]
+        C["Checks the approval<br/>sends the approved files"]
+    end
+    subgraph RL["Your relay: one Cloudflare Worker"]
+        Q["Offers · the PIN check · Meta's tokens"]
+    end
+    subgraph PH["On your phone"]
+        MU["Muse<br/>what's ready · the link · what got posted"]
+        WA["WhatsApp<br/>a message with the link"]
+        AP["The approval page<br/>clips · places · confirm · PIN"]
+    end
+    G["Graph API"]
+    IG["Instagram Reels"]
+    FB["Facebook Page Reels"]
+    F --> V --> S --> M --> R --> O
+    O -->|signed, outbound only| Q
+    Q --> MU
+    Q --> WA
+    MU -->|the link| AP
+    WA -->|the link| AP
+    AP -->|approve, with the PIN| Q
+    Q -.->|the app collects the decision| C
+    C -->|through the relay| G
+    G --> IG
+    G --> FB
+    classDef model fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
+    classDef metaapp fill:#E7F0FF,stroke:#0866FF,color:#0B1F44
+    class V,S,M model
+    class MU,WA,G,IG,FB metaapp
 ```
-game video -> Muse Voice -> Muse Spark -> SAM 3.1 -> ffmpeg (9:16) -> your phone -> Instagram + Facebook
-```
+
+**Solid blue: Meta's models** (Muse Voice, Muse Spark, SAM 3.1), the only AI
+this app calls. **Light blue: Meta's apps and APIs** (Muse, WhatsApp, the Graph
+API, Instagram, Facebook).
 
 - **The app** (`gameday/`) is one Python process: the dashboard (plain HTML,
   CSS and JavaScript), the HTTP API in [docs/API.md](docs/API.md), a job
