@@ -482,10 +482,10 @@ def can_enable_remote_approval(db) -> str:
     reaches the owner's phone, and the PIN is still asked on the page."""
     config = ra_settings.load(db)
     if not ra_settings.muse_connected(config):
-        if not config["whatsapp_enabled"]:
-            return "Make a Muse key, or turn on Send me WhatsApp messages, first."
-        if (config["pairing"] or {}).get("state") != "confirmed":
-            return "Pair and confirm your WhatsApp number, or connect your Muse agent, first."
+        # A paired, confirmed WhatsApp number still counts here, but the
+        # dashboard doesn't offer WhatsApp, so the note asks for Muse only.
+        if not config["whatsapp_enabled"] or (config["pairing"] or {}).get("state") != "confirmed":
+            return "Make a Muse key first, so your Muse agent can hand you the approval link."
     if not config["pin_set"]:
         return "Set an approval PIN first. The approval page asks for it before anything is published."
     return ""

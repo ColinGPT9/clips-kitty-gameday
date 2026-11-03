@@ -28,12 +28,16 @@ WHERE = "In the dashboard's Setup"
 def why_not_offered(config: dict) -> str:
     """Why a finished game is not offered on the phone, named as the
     dashboard names its switches, or "" when nothing in the settings stops it.
-    An offer reaches the phone on WhatsApp or through the owner's Muse agent."""
+    The dashboard's phone flow is the owner's Muse agent and the approval
+    page; the WhatsApp path stays in the code, off with no number paired, so
+    these notes name Muse only."""
     if not (config["whatsapp_enabled"] or ra_settings.muse_connected(config)):
-        return f"Nothing was sent to your phone. {WHERE}, make a Muse key or turn on Send me WhatsApp messages."
+        return f"Nothing was offered on your phone. {WHERE}, make a Muse key."
     if not config["notify_on_finish"]:
-        return (f"Nothing was sent to your phone. {WHERE}, turn on When a game's clips are ready "
-                "(under Send me WhatsApp messages).")
+        # The dashboard no longer has this switch (it sat with WhatsApp's
+        # messages), so the note names the setting itself.
+        return ("Nothing was offered on your phone: offers for finished games are off. Set notify_on_finish "
+                "back on with PATCH /remote-approval/settings (docs/API.md).")
     return ""
 
 

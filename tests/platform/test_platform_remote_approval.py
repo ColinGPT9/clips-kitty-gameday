@@ -794,7 +794,10 @@ def test_saved_settings_naming_a_place_an_offer_cant_post_to_still_load(db):
 
 def test_remote_approval_needs_pairing_and_a_pin_first(db):
     ra_settings.save(db, {"whatsapp_enabled": True})
-    assert "Pair" in service.can_enable_remote_approval(db)
+    # WhatsApp on but no number confirmed: the note asks for Muse, the
+    # dashboard's only way to reach the phone.
+    why = service.can_enable_remote_approval(db)
+    assert "Muse" in why and "WhatsApp" not in why
     ra_settings.save(db, {"pairing": {"state": "confirmed"}}, internal=True)
     assert "PIN" in service.can_enable_remote_approval(db)
     ra_settings.save(db, {"pin_set": True}, internal=True)
