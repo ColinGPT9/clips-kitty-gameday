@@ -71,6 +71,91 @@ def test_the_password_is_generated_once_and_logged_only_by_where_it_is(tmp_path,
     assert owner_password(Config.from_env({"DATA_DIR": str(tmp_path / "data"), "GAMEDAY_PASSWORD": "x"})) == "x"
 
 
+def _guarded(clock):
+    from fastapi import FastAPI
+
+    from gameday.app import Guard
+
+    inner = FastAPI()
+    inner.get("/api/status")(lambda: {"ok": True})
+    return Guard(inner, password=PASSWORD, clock=clock)
+
+
+WRONG = {"Authorization": "Basic " + base64.b64encode(b"owner:guess").decode()}
+
+
+def test_ten_wrong_passwords_lock_that_address_out_for_15_minutes(caplog):
+    now = [1000.0]
+    guard = _guarded(lambda: now[0])
+    attacker = TestClient(guard, client=("203.0.113.9", 4000))
+    for _ in range(9):
+        assert attacker.get("/api/status", headers=WRONG).status_code == 401
+    assert attacker.get("/api/status", headers=WRONG).status_code == 401  # the 10th still gets a plain answer
+    r = attacker.get("/api/status", headers=AUTH)  # locked: even the right password isn't checked
+    assert r.status_code == 429 and r.headers["Retry-After"] == "900"
+    assert r.headers["Content-Security-Policy"] == CSP and "15 minutes" in r.json()["error"]
+    assert "203.0.113.9" in caplog.text and PASSWORD not in caplog.text and "guess" not in caplog.text
+    owner = TestClient(guard, client=("198.51.100.7", 4000))
+    assert owner.get("/api/status", headers=AUTH).status_code == 200  # another address isn't affected
+    now[0] += 600
+    assert attacker.get("/api/status", headers=AUTH).headers["Retry-After"] == "300"
+    now[0] += 300
+    assert attacker.get("/api/status", headers=AUTH).status_code == 200
+
+
+def test_no_password_never_counts_and_a_right_one_forgives_typos():
+    now = [0.0]
+    guard = _guarded(lambda: now[0])
+    browser = TestClient(guard, client=("203.0.113.10", 4000))
+    for _ in range(30):
+        assert browser.get("/api/status").status_code == 401  # a browser's first try has no header
+    for _ in range(9):
+        assert browser.get("/api/status", headers=WRONG).status_code == 401
+    assert browser.get("/api/status", headers=AUTH).status_code == 200
+    for _ in range(9):
+        assert browser.get("/api/status", headers=WRONG).status_code == 401
+    assert browser.get("/api/status", headers=AUTH).status_code == 200
+    for _ in range(5):
+        browser.get("/api/status", headers=WRONG)
+    now[0] += 601  # wrong tries older than 10 minutes are forgotten too
+    for _ in range(9):
+        browser.get("/api/status", headers=WRONG)
+    assert browser.get("/api/status").status_code == 401
+
+
+def test_behind_the_proxy_each_visitor_is_counted_on_their_own():
+    guard = _guarded(lambda: 0.0)
+    caddy = TestClient(guard, client=("172.18.0.3", 4000))  # the proxy, in a container beside the app
+    for _ in range(10):
+        caddy.get("/api/status", headers={**WRONG, "X-Forwarded-For": "203.0.113.11"})
+    assert caddy.get("/api/status", headers={**AUTH, "X-Forwarded-For": "203.0.113.11"}).status_code == 429
+    assert caddy.get("/api/status", headers={**AUTH, "X-Forwarded-For": "198.51.100.8"}).status_code == 200
+    # A visitor reaching the app straight from the internet can't pick their own address.
+    direct = TestClient(guard, client=("11.22.33.44", 4000))  # any address on the internet
+    for i in range(10):
+        direct.get("/api/status", headers={**WRONG, "X-Forwarded-For": f"10.0.0.{i}"})
+    assert direct.get("/api/status", headers=AUTH).status_code == 429
+
+
+@pytest.mark.parametrize("host, code", [("0.0.0.0", 2), ("127.0.0.1", 0)])
+def test_a_short_password_is_refused_unless_the_app_is_local_only(tmp_path, monkeypatch, capsys, host, code):
+    import dotenv
+    import uvicorn
+
+    from gameday import __main__ as entry
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **kw: False)  # no .env from the checkout
+    for name, value in {"DATA_DIR": str(tmp_path / "data"), "HOST": host, "GAMEDAY_PASSWORD": "short1"}.items():
+        monkeypatch.setenv(name, value)
+    ran = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: ran.append(kw))
+    assert entry.main() == code
+    err = capsys.readouterr().err
+    assert "short1" not in err
+    assert ("shorter than 12" in err) == bool(code) and len(ran) == (0 if code else 1)
+
+
 # ---- headers ---------------------------------------------------------------------
 
 

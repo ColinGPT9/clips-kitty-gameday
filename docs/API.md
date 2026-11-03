@@ -8,6 +8,10 @@ This is the contract between the platform (routes) and the dashboard
 - Everything except `GET /health` needs HTTP Basic auth: user `owner`, and the
   password from `GAMEDAY_PASSWORD` (or the generated one, see Environment).
   A wrong or missing password gets 401 with `WWW-Authenticate: Basic`.
+  After 10 wrong passwords (not missing ones) from one address within 10
+  minutes, that address gets 429 with `Retry-After` for 15 minutes, whatever
+  password it sends. Behind a proxy on a private address, the address is the
+  last `X-Forwarded-For` entry.
 - Every POST, PUT, PATCH and DELETE also needs the header `X-Gameday-Action: 1`.
   Without it the answer is 403. That way a page on another site can't post to the app.
 - An error answer is `{"error": "<a sentence for people>"}` with a 4xx or 5xx status.

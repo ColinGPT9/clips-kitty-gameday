@@ -3,6 +3,8 @@
 Rules for every route, in one ASGI layer (Guard), so nothing can skip them:
 * HTTP Basic auth as `owner`, compared in constant time, on everything but
   GET /health; a wrong or missing password is 401 with WWW-Authenticate.
+  After LOCK_AFTER wrong passwords from one address within LOCK_WINDOW_S,
+  that address gets 429 for LOCK_FOR_S, without its password being checked.
 * Every POST, PUT, PATCH and DELETE also needs X-Gameday-Action: 1, else 403,
   so a page on another site can't make the owner's browser change anything.
 * Every answer carries the Content-Security-Policy, nosniff and no-referrer
@@ -18,7 +20,11 @@ from __future__ import annotations
 import base64
 import binascii
 import hmac
+import ipaddress
 import logging
+import math
+import time
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -48,15 +54,63 @@ SECURITY_HEADERS = {
 ACTION_HEADER = "x-gameday-action"
 CHANGING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 WATCH_DIR_FLAG = "watch_dir_added"
+LOCK_AFTER = 10  # wrong passwords from one address...
+LOCK_WINDOW_S = 600.0  # ...within 10 minutes...
+LOCK_FOR_S = 900.0  # ...lock that address out for 15 minutes
+MAX_TRACKED = 10_000  # addresses remembered at once
+
+
+def client_address(scope, headers: Headers) -> str:
+    """Who is asking. A request from a private or loopback address came
+    through the proxy (Caddy on this host, or in a container beside the app),
+    so the visitor is the address that proxy saw: the last X-Forwarded-For
+    entry. Anything else is the peer itself."""
+    peer = (scope.get("client") or ("", 0))[0] or ""
+    try:
+        behind_proxy = not ipaddress.ip_address(peer).is_global
+    except ValueError:
+        behind_proxy = False
+    if behind_proxy:
+        forwarded = [part.strip() for part in headers.get("x-forwarded-for", "").split(",") if part.strip()]
+        if forwarded:
+            return forwarded[-1][:64]
+    return peer[:64]
 
 
 class Guard:
     """Basic auth, the action header and the security headers, for every request."""
 
-    def __init__(self, app, *, password: str, user: str = OWNER_USER):
+    def __init__(self, app, *, password: str, user: str = OWNER_USER, clock=time.monotonic):
         self.app = app
         self._user = user.encode()
         self._password = password.encode()
+        self._clock = clock
+        self._fails: OrderedDict[str, list[float]] = OrderedDict()  # address -> times of wrong passwords
+        self._locked: OrderedDict[str, float] = OrderedDict()  # address -> locked until
+
+    def locked_for(self, who: str, now: float) -> float:
+        """Seconds `who` is still locked out for, 0 when it isn't."""
+        until = self._locked.get(who)
+        if until is None:
+            return 0.0
+        if until <= now:
+            del self._locked[who]
+            return 0.0
+        return until - now
+
+    def failed(self, who: str, now: float) -> None:
+        times = [t for t in self._fails.pop(who, []) if now - t < LOCK_WINDOW_S]
+        times.append(now)
+        if len(times) >= LOCK_AFTER:
+            self._locked[who] = now + LOCK_FOR_S
+            self._locked.move_to_end(who)
+            log.warning("%d wrong passwords from %s in %d minutes: refusing it for %d minutes.", len(times), who,
+                        int(LOCK_WINDOW_S // 60), int(LOCK_FOR_S // 60))
+        else:
+            self._fails[who] = times
+        for table in (self._fails, self._locked):
+            while len(table) > MAX_TRACKED:
+                table.popitem(last=False)
 
     def authorized(self, headers: Headers) -> bool:
         value = headers.get("authorization", "")
@@ -91,12 +145,24 @@ class Guard:
         method, path = scope["method"], scope["path"]
         if not (path == "/health" and method in ("GET", "HEAD")):
             headers = Headers(scope=scope)
+            who, now = client_address(scope, headers), self._clock()
+            wait = self.locked_for(who, now)
+            if wait:
+                response = JSONResponse(
+                    {"error": "Too many wrong passwords from your address. Try again in 15 minutes."},
+                    status_code=429, headers={"Retry-After": str(math.ceil(wait))})
+                await response(scope, receive, send_secure)
+                return
             if not self.authorized(headers):
+                # A browser's first request carries no password at all: only a wrong one counts.
+                if "authorization" in headers:
+                    self.failed(who, now)
                 response = JSONResponse(
                     {"error": f"Sign in as {OWNER_USER} to use {APP_NAME}."}, status_code=401,
                     headers={"WWW-Authenticate": f'Basic realm="{APP_NAME}", charset="UTF-8"'})
                 await response(scope, receive, send_secure)
                 return
+            self._fails.pop(who, None)  # the owner got it right: earlier typos are forgiven
             if method in CHANGING and headers.get(ACTION_HEADER) != "1":
                 response = JSONResponse({"error": "This change needs the X-Gameday-Action: 1 header."},
                                         status_code=403)

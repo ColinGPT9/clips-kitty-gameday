@@ -20,16 +20,23 @@ def main() -> int:
     import uvicorn
 
     from gameday.app import create_app
-    from gameday.config import OWNER_USER, Config, password_source
+    from gameday.config import OWNER_USER, Config, listens_beyond_this_computer, password_source, weak_password
 
     try:
         config = Config.from_env()
     except ValueError as e:
         print(f"Clips Kitty Game Day can't start: {e}", file=sys.stderr)
         return 2
+    weak = weak_password(config)
+    if weak and listens_beyond_this_computer(config):
+        print(f"Clips Kitty Game Day can't start: {weak} HOST is {config.host}, so others can reach the app.",
+              file=sys.stderr)
+        return 2
     logging.basicConfig(level=getattr(logging, config.log_level, logging.INFO),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     log = logging.getLogger("gameday")
+    if weak:
+        log.warning("%s It is accepted only because HOST is %s.", weak, config.host)
     app = create_app(config)
     log.info("Clips Kitty Game Day on http://%s:%s. Sign in as %s; the password is in %s.",
              config.host, config.port, OWNER_USER, password_source(config))

@@ -123,6 +123,23 @@ def write_private(path: Path, text: str) -> bool:
     return True
 
 
+MIN_PASSWORD = 12
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def weak_password(config: Config) -> str:
+    """Why GAMEDAY_PASSWORD is too short to trust, or "" when it is fine (or unset:
+    the generated one is 24 characters). Never says what the password is."""
+    if config.password and len(config.password) < MIN_PASSWORD:
+        return (f"GAMEDAY_PASSWORD is shorter than {MIN_PASSWORD} characters. Set a longer one, or unset it "
+                f"to have one generated.")
+    return ""
+
+
+def listens_beyond_this_computer(config: Config) -> bool:
+    return config.host.strip().lower() not in LOOPBACK_HOSTS
+
+
 def owner_password(config: Config) -> str:
     """GAMEDAY_PASSWORD, or the one generated on first start and kept in
     DATA_DIR/owner-password.txt. The log names the file, never the password."""
