@@ -168,7 +168,7 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
 
     @app.post("/api/meta/test")
     def test_meta_key():
-        from gameday.types import MetaError
+        from gameday.types import BudgetExceeded, MetaError
 
         try:
             meta = meta_factory()
@@ -178,6 +178,8 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
             return {"ok": False, "error": "No Meta key is saved."}
         try:
             meta.test_key()
+        except BudgetExceeded as e:  # this app's own budget stopped it: nothing reached Meta
+            return {"ok": False, "budget": True, "error": str(e) or "Meta calls are paused by the budget."}
         except MetaError as e:
             return {"ok": False, "error": str(e) or "The key didn't work."}
         return {"ok": True}

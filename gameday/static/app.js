@@ -1237,6 +1237,7 @@
       const started = Date.now();
       const got = await api('POST', '/api/meta/test');
       if (got && got.ok) note('meta-note', `Key works. Meta answered in ${((Date.now() - started) / 1000).toFixed(1)}s.`, 'ok');
+      else if (got && got.budget) note('meta-note', got.error, 'warn');
       else note('meta-note', 'Meta turned the key down: ' + ((got && got.error) || 'no reason given.'), 'bad');
     }));
     $('meta-remove').addEventListener('click', async (e) => {

@@ -57,7 +57,8 @@ The relay, PIN, Muse and accounts are in `GET /remote-approval/status` (below).
   The key is never sent back by any route.
 - `DELETE /api/meta/key` gives `{"saved": false}`.
 - `POST /api/meta/test` gives `{"ok": true}`, or `{"ok": false, "error": "..."}`.
-  It makes one cheap call.
+  It makes one cheap call. When `META_BUDGET_USD` stopped the call before it
+  reached Meta, the answer also has `"budget": true`.
 
 ### Upload
 `POST /api/upload?filename=game.mp4`, where the body is the raw file

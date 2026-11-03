@@ -440,6 +440,18 @@ def test_testing_the_key_makes_one_cheap_call(make_app):
     assert make_app().post("/api/meta/test").json() == {"ok": False, "error": "No Meta key is saved."}
 
 
+def test_a_key_test_stopped_by_the_budget_says_so(make_app):
+    from gameday.types import BudgetExceeded
+
+    class Spent(FakeMeta):
+        def test_key(self):
+            raise BudgetExceeded("Meta calls are paused: about $25.00 is spent.")
+
+    app = make_app(meta_factory=lambda: Spent())
+    assert app.post("/api/meta/test").json() == {"ok": False, "budget": True,
+                                                 "error": "Meta calls are paused: about $25.00 is spent."}
+
+
 def test_secrets_are_fernet_tokens_under_the_key_file(tmp_path):
     config = make_config(tmp_path)
     config.ensure_dirs()
