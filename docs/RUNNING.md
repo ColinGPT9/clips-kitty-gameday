@@ -106,7 +106,7 @@ TODO(measured).
 - Inbound: HTTPS to the proxy only.
 - Outbound: HTTPS to `api.meta.ai` (Muse Voice, Muse Spark, SAM 3.1) and to
   your relay's address. Nothing else. The relay, not the app, talks to the
-  Graph API and WhatsApp.
+  Graph API.
 
 ## One process only
 

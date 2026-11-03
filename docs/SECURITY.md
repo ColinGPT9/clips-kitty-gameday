@@ -11,16 +11,15 @@ against.
 - **Only the owner reaches the app.** Every route except `GET /health` needs
   the owner password, and the app sits behind HTTPS.
 - **The relay never calls the app.** The app calls out to the relay (signed
-  requests) and to `api.meta.ai`. Meta's webhooks, the sign-in redirects and
+  requests) and to `api.meta.ai`. The sign-in redirects, Muse's calls and
   the phone's pages all land on the relay.
 - **No Meta app secret or account token in the app.** They live on the
   owner's relay only: Wrangler secrets, and account tokens sealed with
   AES-GCM under `TOKEN_KEY` in D1. The app holds the owner password, its
   Meta Model API key and its relay device secret. A key saved in the
   dashboard and the device secret are encrypted at rest.
-- **A phone number alone authorises nothing.** Pairing needs a one-time code
-  sent from the phone *and* a confirmation in the dashboard. Approving needs
-  the link (single-purpose, expiring), the PIN, and the app's own checks.
+- **A link alone authorises nothing.** Approving needs the link
+  (single-purpose, expiring), the PIN, and the app's own checks.
 - **The relay has the least power that works.** It can't read the app's
   files or call its API. It can only answer the app's signed requests, and
   only run Graph steps for a clip and place the phone approved, under a
@@ -45,27 +44,16 @@ against.
 | Running other programs | The app runs only ffmpeg and ffprobe, with argument lists, never through a shell |
 | Runaway spending | Each Meta call checks the budget first and is refused once estimated spending passes `META_BUDGET_USD`. Every call, ok or not, is logged with its estimated cost |
 
-## Pairing a number
-
-| Step | Protection |
-|---|---|
-| The app asks for a code | Signed request; 6 characters from 31 letters and digits without look-alikes; stored hashed; expires in 10 minutes |
-| The phone sends `LINK CODE` | Webhook signature checked; the number is recorded as *awaiting confirmation* |
-| The dashboard confirms "ending in 4567" | Only the last four digits ever reach the app; refusing deletes the pairing |
-| `STOP` / `START` | Honoured for the number everywhere it is paired |
-
 ## The approval page
 
 | Threat | Protection |
 |---|---|
-| Someone else gets the link | The link token is 32 random bytes, found by its SHA-256 and otherwise kept only sealed with AES-GCM under `TOKEN_KEY` (for reminders, the results message and Muse). It expires with the offer (1 to 72 hours, 24 by default). Approving also needs the PIN |
+| Someone else gets the link | The link token is 32 random bytes, found by its SHA-256 and otherwise kept only sealed with AES-GCM under `TOKEN_KEY` (so Muse can hand it over). It expires with the offer (1 to 72 hours, 24 by default). Approving also needs the PIN |
 | PIN guessing | 4 to 8 digits, not one digit repeated or a run; stored as PBKDF2-SHA256 (100,000 rounds, salted). Five wrong tries lock approvals for 15 minutes, and each try is counted before its PIN is checked, so tries sent all at once get no more. Three lockouts within a day block approving from the phone until a new PIN is set in the dashboard |
 | Cross-site form posts | A CSRF token bound to the approval and link (HMAC with `TOKEN_KEY`) and an `Origin` check |
 | A tampered form | Clips must be in the offer and places must be connected; anything else is refused and nothing is approved |
 | Script injection | Server-rendered HTML with everything escaped, no JavaScript, `Content-Security-Policy: default-src 'none'` (images and videos only from the relay itself), `frame-ancestors 'none'`, `Cache-Control: no-store` |
 | Someone else watches the previews | A preview is served only under its offer's link token, and only while the offer is open or put aside and its link hasn't expired. The relay takes one only from the app that made the offer, for a clip in it, as an MP4 of at most 4 MiB, and keeps it until five minutes after the link expires |
-| A plain "yes" in WhatsApp | Never approves; the reply says where to approve |
-| Quick-reply buttons | Can only put aside or cancel, and only the offer they were sent with, from the paired number |
 
 ## The Muse connector
 
@@ -95,22 +83,19 @@ dashboard ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)).
 
 ## What is shown and logged
 
-- WhatsApp messages hold the video's title, counts and links; never a
-  credential, a path or an error log. The failure message is fixed text.
 - Meta's raw error text stays on the relay. The relay logs error codes only,
-  never tokens, numbers or message bodies.
+  never tokens.
 - Every state change of an offer is in an audit log in the app and on the
   relay, with who made it (the app, the relay, the phone, Muse, the
   publisher).
-- The phone-approval reads (`GET /remote-approval/...`) return no secret and
-  no phone number, only its last four digits. A new Muse key is in one answer
+- The phone-approval reads (`GET /remote-approval/...`) return no secret. A
+  new Muse key is in one answer
   only, and is not stored or logged by the app.
 
 ## Phone approval is off by default
 
 **Let me approve publishing from my phone** starts off, and can only be
-switched on once a PIN is set and either a Muse agent is connected or a
-paired, confirmed WhatsApp number has messages on.
+switched on once a PIN is set and a Muse agent is connected.
 
 ## Reporting a problem
 

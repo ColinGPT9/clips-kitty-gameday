@@ -9,8 +9,9 @@ the app:
   sealed, so the app never holds them;
 - it makes the Instagram and Facebook Graph API calls for an approved clip,
   with the file the app sends it;
-- it hosts the connector for your Muse agent ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md));
-- optionally, it sends and receives WhatsApp messages.
+- it hosts the connector for your Muse agent ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)).
+
+The relay can also send WhatsApp messages, and this app does not use that.
 
 The app only ever calls out to the relay: once with the enrolment key to
 register, then with signed requests. The relay never calls the app.
@@ -18,8 +19,7 @@ register, then with signed requests. The relay never calls the app.
 Allow about 30 minutes, once. You need a Meta developer account, a Meta
 Business portfolio, a Facebook Page with an Instagram professional account
 linked to it, a Cloudflare account (the free plan is enough for one owner),
-and Node 22.5 or later on the computer you deploy from. For WhatsApp, also a
-phone number for the business (Meta's free test number works for a trial).
+and Node 22.5 or later on the computer you deploy from.
 
 **Keep every token, secret and key out of chats, issues and screenshots.**
 They go into `wrangler secret put` prompts only.
@@ -36,11 +36,6 @@ They go into `wrangler secret put` prompts only.
      `business_management`.
    - The Instagram account must be a professional (Business or Creator)
      account linked to the Facebook Page.
-4. Optional, for WhatsApp: add the **WhatsApp** product. In *WhatsApp → API
-   Setup*, note the **Phone number ID** and the **WhatsApp Business Account
-   ID**. Create a **System User** in Business Settings with the
-   `whatsapp_business_messaging` and `whatsapp_business_management`
-   permissions on that WhatsApp account, and make a permanent token for it.
 
 Without App Review, the app has Standard Access: these permissions work only
 for people with a role on the app (admin, developer or tester). For an owner
@@ -62,9 +57,7 @@ npx wrangler deploy                                # prints https://clips-kitty-
 ```
 
 - Put the address `wrangler deploy` printed in `wrangler.toml` as
-  `PUBLIC_URL`, with no trailing slash. For WhatsApp, you can also put your
-  business number's digits in `WHATSAPP_DISPLAY_NUMBER`, for the one-tap
-  pairing link.
+  `PUBLIC_URL`, with no trailing slash.
 - The KV namespace is optional. With it, the approval page plays a small
   preview of each clip before you decide; without it, the page shows still
   thumbnails. Put its id in the commented `[[kv_namespaces]]` block of
@@ -81,34 +74,13 @@ npx wrangler secret put META_APP_SECRET
 npx wrangler deploy
 ```
 
-For WhatsApp, also:
-
-```
-npx wrangler secret put WHATSAPP_TOKEN
-npx wrangler secret put WHATSAPP_PHONE_NUMBER_ID
-npx wrangler secret put WHATSAPP_WABA_ID
-npx wrangler secret put WEBHOOK_VERIFY_TOKEN       # any random string; you type it once in Meta's webhook form
-npx wrangler deploy
-```
-
 Check it: `https://<your relay>/health` answers `{"ok": true, ...}`, with
 `"previews": true` when the KV binding is set.
 
 If your relay was deployed before the Muse connector or the previews
 existed, run the `schema.sql` line again: it only adds what is missing.
 
-## 3. WhatsApp's webhook (WhatsApp only)
-
-In the Meta app, *WhatsApp → Configuration → Webhook*:
-
-- Callback URL: `https://<your relay>/webhook`
-- Verify token: the `WEBHOOK_VERIFY_TOKEN` you chose
-- Subscribe to **messages** and **message_template_status_update**.
-
-The relay checks every webhook's `X-Hub-Signature-256` with the app secret
-and ignores anything unsigned.
-
-## 4. Connect the app
+## 3. Connect the app
 
 In the dashboard, under **Setup**:
 
@@ -125,24 +97,10 @@ In the dashboard, under **Setup**:
    The tokens go to the relay, sealed with `TOKEN_KEY`, never to the app.
    With more than one Page, the relay asks which one.
 4. **Muse**: see [MUSE_CONNECTOR.md](MUSE_CONNECTOR.md).
-5. **WhatsApp** (optional): start pairing. You get a code like `LINK K7QM2X`.
-   Send it from your phone to the business number (or tap the link that opens
-   WhatsApp with it typed). The dashboard then asks whether the number ending
-   in, say, 4567 is yours: confirm it. A code alone never pairs a number.
-6. **Let me approve publishing from my phone**: switch it on. It needs the PIN
-   and a way to reach you: a connected Muse agent, or a paired and confirmed
-   WhatsApp number with WhatsApp messages on.
-
-### WhatsApp's message templates
-
-The relay sends four utility templates (`ck_highlights_ready`,
-`ck_processing_failed`, `ck_publish_update` and `ck_test_message`). Meta has
-to approve them first, which usually takes minutes to a few hours. Until
-then, messages reach you only within 24 hours of your last message to the
-business number. In **Setup → WhatsApp**, **Send them for review** asks
-Meta to review them through the relay, and **Check their status** shows
-where each one stands. (Both call `POST /remote-approval/templates`, with
-`{"create": true}` and `{}`.)
+5. **Let me approve publishing from my phone**: switch it on. It needs the PIN
+   and a connected Muse agent. Muse doesn't message you when clips are
+   ready: ask it what's ready (or set yourself a reminder in Muse), or look
+   at the dashboard.
 
 ## What gets posted
 
@@ -170,19 +128,16 @@ phone, under an approval the app accepted, within 24 hours.
 
 ## Turning it off
 
-- From the phone: send `STOP` to the business number, and `START` to resume.
-- From the dashboard: **Disconnect** under Relay. The relay unpairs the
-  number, cancels open offers and stops the Muse key, and the app forgets its
+- From the dashboard: **Disconnect** under Relay. The relay cancels open
+  offers and stops the Muse key, and the app forgets its
   device secret. The relay keeps the app's old record, its PIN hash and the
   accounts' sealed tokens: to remove those tokens, **Disconnect** each account
   first.
 
 ## Costs
 
-WhatsApp utility templates are charged per delivered message: about $0.0034
-each in North America at the time of writing. Replies inside the 24-hour
-window are free. Cloudflare Workers, D1 and KV fit in the free plan for one
-owner. The dashboard shows a running estimate.
+Cloudflare Workers, D1 and KV fit in the free plan for one owner. The Graph
+API charges nothing for posting.
 
 ## Trying it without Meta
 
@@ -193,5 +148,5 @@ npm run dev       # http://127.0.0.1:8787, prints an enrolment key
 ```
 
 `npm run dev` runs the real `worker.js` with Meta faked. Its `/__mock/...`
-routes play the phone and finish a sign-in. [LOCAL_SETUP.md](LOCAL_SETUP.md)
+routes finish a sign-in and list the fake posts. [LOCAL_SETUP.md](LOCAL_SETUP.md)
 walks through a whole approval with it. The relay has no npm dependencies.

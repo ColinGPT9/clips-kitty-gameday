@@ -62,7 +62,7 @@ def test_a_job_runs_in_its_own_folder_and_its_stages_are_timed(make_app):
     assert {s: v["state"] for s, v in job["stages"].items()} == {
         "voice": "done", "spark": "done", "sam": "done", "render": "done", "captions": "skipped"}
     assert job["stages"]["spark"]["cost_usd"] == 0.002 and job["cost_usd"] == 0.002
-    assert job["stages"]["captions"]["note"].startswith("Nothing was sent to your phone")
+    assert job["stages"]["captions"]["note"].startswith("Nothing was offered on your phone")
     assert all(v["seconds"] >= 0 for v in job["stages"].values())
     assert [c["category"] for c in job["clips_list"]] == [p[0] for p in PLAYS]
 
@@ -200,8 +200,7 @@ def test_the_captions_stage_says_why_nothing_was_offered(make_app):
     job_id = upload(app)
     app.worker.run_next_job()
     note = app.get(f"/api/jobs/{job_id}").json()["stages"]["captions"]["note"]
-    assert note == ("Nothing was sent to your phone. In the dashboard's Setup, make a Muse key or turn on Send me "
-                    "WhatsApp messages.")
+    assert note == "Nothing was offered on your phone. In the dashboard's Setup, make a Muse key."
     # On, but this app was never registered with a relay.
     from gameday.remote_approval import settings as ra_settings
 
@@ -242,11 +241,16 @@ def test_the_notes_name_switches_the_dashboard_really_has():
     off = {"whatsapp_enabled": False, "notify_on_finish": True, "muse": {}}
     notes = [notifier.why_not_offered(off), notifier.why_not_offered({**off, "whatsapp_enabled": True,
                                                                         "notify_on_finish": False})]
-    labels = ["Setup", "Make a Muse key", "Send me WhatsApp messages", "When a game's clips are ready",
-              "Offer other videos too", "Publishing"]
+    labels = ["Setup", "Make a Muse key", "Offer other videos too", "Publishing"]
     for label in labels:
         assert label in page, label
-    assert all(label.lower() in " ".join(notes).lower() for label in labels[:4])
+    assert all(label.lower() in notes[0].lower() for label in labels[:2])
+    # The dashboard has no switch for notify_on_finish any more: the note
+    # names the setting and where it is changed instead.
+    assert "notify_on_finish" in notes[1] and "PATCH /remote-approval/settings" in notes[1]
+    # WhatsApp stays in the code, off, but the notes never send the owner to it.
+    assert not any("whatsapp" in note.lower() for note in notes)
+    assert "whatsapp" not in page.lower()
 
 
 def test_a_failed_job_queues_the_plain_failure_message(make_app):

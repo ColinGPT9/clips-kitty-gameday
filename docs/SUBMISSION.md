@@ -41,8 +41,9 @@ by hand takes too long.
 2. Muse Voice transcribes the commentary. Muse Spark picks the plays and
    writes their titles and captions. SAM 3.1 finds the ball, and ffmpeg cuts
    9:16 clips whose crop follows it.
-3. When the game is done, the clips are offered on your phone, through Muse,
-   WhatsApp, or both.
+3. When the game is done, the clips are offered on your phone. Ask Muse
+   what's ready (it doesn't message you first), or look at the dashboard,
+   and Muse hands you the approval link.
 4. On the approval page you watch them, tick the ones you want and where
    they go, confirm, and enter your PIN. Only then are they posted, as
    Instagram Reels and Facebook Page Reels, through Meta's Graph API.
@@ -58,10 +59,9 @@ got posted, and the spending against a budget.
 | **SAM 3.1** (`sam-3.1`, hosted by Meta) | Finds the ball in each play, so the 9:16 crop follows it. Each clip records how much of it followed the ball, and the dashboard shows the frame with SAM's box and the crop |
 | **Muse Spark** (`muse-spark-1.3`) | Reads the commentary and picks the moments, held to a strict JSON schema: each play's window, category, score and the commentary behind it. Writes each clip's title and caption |
 | **Muse Voice** (`muse-voice-transcribe-1.0`) | Transcribes the game's commentary with times, for Muse Spark to read |
-| **The Muse connector** | A custom connector for Muse, Meta's agent app, on the owner's relay: an MCP server with six tools, plus the same tools as HTTPS routes with an OpenAPI description. Muse says what's ready, hands over the approval link, says what got posted, and puts an offer aside or cancels it. No tool approves or posts. Not yet tried in the Muse app itself |
+| **The Muse connector** | A custom connector for Muse, Meta's agent app, on the owner's relay: an MCP server with six tools, plus the same tools as HTTPS routes with an OpenAPI description. Muse says what's ready, hands over the approval link, says what got posted, and puts an offer aside or cancels it. No tool approves or posts. Ran in the Muse app on 2 Nov 2026, on the event branch's relay ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)) |
 | **Graph API Reels** | Instagram Reels (resumable upload, container status, publish, permalink) and Facebook Page Reels (start, upload, finish, status, permalink), made by the relay only for what was approved |
 | **Facebook Login for Business** | Connects the Page and its Instagram account. The tokens stay on the relay |
-| **WhatsApp Business Cloud API** (optional) | Messages with the approval link, quick replies, pairing a number with a one-time code, STOP and START |
 
 Only Meta's models are called at runtime. `tests/test_meta_only.py` fails on
 any other AI package, import or model host, and if the app's model list is
@@ -96,6 +96,9 @@ More in [SECURITY.md](SECURITY.md).
 - On the event branch, on 1 Nov 2026, the relay and the phone's approval
   page ran live: one clip was approved on a phone with the PIN and posted
   through Meta's APIs as an Instagram Reel and a Facebook Page Reel.
+- On the same event branch's relay, on 2 Nov 2026, the Muse app connected
+  as a custom connector (the remote MCP server, with the key in a header)
+  and handed over an offer's approval link, which opened on the phone.
 
 ## How to try it
 

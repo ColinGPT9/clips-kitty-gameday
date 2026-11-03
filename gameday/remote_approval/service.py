@@ -246,6 +246,14 @@ def result_text(results: dict) -> str:
 PERMANENT = {"not_paired", "not_confirmed", "opted_out", "template_missing", "template_not_approved",
              "bad_request", "not_registered", "forbidden", "no_channel"}
 
+#: Refusals told in this app's words instead of the relay's: the relay is
+#: shared with the desktop edition, and its text for these names settings
+#: this dashboard doesn't have.
+APP_WORDS = {
+    # The relay saw no active Muse key for this app when the offer went out.
+    "no_channel": "The relay has no Muse key for this app. Make a Muse key in Setup, then Send again.",
+}
+
 
 def flush_outbox(db, relay: Relay, *, now=None) -> int:
     sent = 0
@@ -260,10 +268,11 @@ def flush_outbox(db, relay: Relay, *, now=None) -> int:
             answer = relay.notify(body)
         except RelayError as e:
             if e.code in PERMANENT:
-                store.outbox_done(db, item["id"], "failed", e.message)
+                why = APP_WORDS.get(e.code, e.message)
+                store.outbox_done(db, item["id"], "failed", why)
                 if item["review_id"]:
-                    store.update_review(db, item["review_id"], error=e.message)
-                    store.audit(db, item["review_id"], "relay", "notify_failed", e.message)
+                    store.update_review(db, item["review_id"], error=why)
+                    store.audit(db, item["review_id"], "relay", "notify_failed", why)
                 continue
             store.outbox_retry(db, item, e.message, now)
             if not e.retryable:
@@ -482,10 +491,10 @@ def can_enable_remote_approval(db) -> str:
     reaches the owner's phone, and the PIN is still asked on the page."""
     config = ra_settings.load(db)
     if not ra_settings.muse_connected(config):
-        if not config["whatsapp_enabled"]:
-            return "Make a Muse key, or turn on Send me WhatsApp messages, first."
-        if (config["pairing"] or {}).get("state") != "confirmed":
-            return "Pair and confirm your WhatsApp number, or connect your Muse agent, first."
+        # A paired, confirmed WhatsApp number still counts here, but the
+        # dashboard doesn't offer WhatsApp, so the note asks for Muse only.
+        if not config["whatsapp_enabled"] or (config["pairing"] or {}).get("state") != "confirmed":
+            return "Make a Muse key first, so your Muse agent can hand you the approval link."
     if not config["pin_set"]:
         return "Set an approval PIN first. The approval page asks for it before anything is published."
     return ""

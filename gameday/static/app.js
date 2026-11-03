@@ -25,8 +25,9 @@
   const PLATFORM_LABELS = { instagram: 'Instagram Reels', facebook: 'Facebook Page Reels' };
   const OFFER_WORDS = {
     READY_FOR_REVIEW: ['Getting ready', ''],
-    NOTIFICATION_PENDING: ['Ready for Muse', 'sky'],
-    NOTIFICATION_SENT: ['Sent to your phone', 'sky'],
+    // Nothing is pushed to the phone: the relay keeps the offer until Muse is asked for it.
+    NOTIFICATION_PENDING: ['Going to the relay', 'sky'],
+    NOTIFICATION_SENT: ['Ready: ask Muse', 'sky'],
     AWAITING_APPROVAL: ['Waiting for approval', 'caution'],
     DEFERRED: ['Remind me later', 'caution'],
     APPROVED: ['Approved, posting…', 'sky'],
@@ -39,7 +40,6 @@
     EXPIRED: ['Link expired', ''],
   };
   const OPEN_OFFERS = ['NOTIFICATION_SENT', 'AWAITING_APPROVAL', 'DEFERRED'];
-  const TEMPLATE_WORDS = { APPROVED: 'approved', PENDING: 'in review', REJECTED: 'rejected' };
   const STORE_KEY = 'ck-gameday-setup-open';
 
   const S = {
@@ -892,10 +892,8 @@
     if (!S.ra) phone = S.raError ? 'Phone approval: ' + S.raError : 'Checking…';
     else if (!set.registered) phone = 'Not connected to a relay yet. Connect one in Setup.';
     else {
-      const ways = [];
-      if (set.muse && set.muse.enabled) ways.push('Muse');
-      if (set.whatsapp_enabled && set.pairing && set.pairing.state === 'confirmed') ways.push('WhatsApp');
-      phone = ways.length ? `Offers reach you through ${ways.join(' and ')}.` : 'Connect Muse or WhatsApp in Setup so offers reach you.';
+      phone = set.muse && set.muse.enabled ? `Muse doesn't message you: ask it "What highlights are ready?" to get the link.`
+        : 'Connect Muse in Setup to get offers on your phone.';
       const outbox = Number(S.ra.outbox_pending) || 0;
       if (outbox) phone += ` ${plural(outbox, 'message')} waiting to go to the relay.`;
     }
@@ -903,10 +901,8 @@
     $('offers-refresh').disabled = !(set && set.registered);
     const u = S.ra && S.ra.usage;
     if (u) {
-      const wa = u.whatsapp || {};
-      const messages = (Number(wa.templates) || 0) + (Number(wa.free_form) || 0);
       const graph = u.meta_graph || {};
-      setText('offers-cost', `Estimated messaging cost so far: ${usd(wa.usd)} · WhatsApp ${plural(messages, 'message')} · ${plural(Number(graph.uploads) || 0, 'Reel')} uploaded`);
+      setText('offers-cost', `${plural(Number(graph.uploads) || 0, 'Reel')} uploaded so far`);
     } else {
       setText('offers-cost', '');
     }
@@ -924,9 +920,10 @@
     if (review.state === 'NOTIFICATION_PENDING' && review.error) [word, tone] = ['Not delivered', 'bad'];
     const platforms = (review.decision && review.decision.platforms && review.decision.platforms.length)
       ? review.decision.platforms.map((p) => PLATFORM_LABELS[p] || p).join(', ') : '';
-    const line2 = [plural((review.clips || []).length, 'clip'), platforms, `sent ${ago(review.created_at)}`];
+    const line2 = [plural((review.clips || []).length, 'clip'), platforms, `offered ${ago(review.created_at)}`];
     if (OPEN_OFFERS.includes(review.state) && review.expires_at) line2.push(`link works until ${at(review.expires_at)}`);
-    if (review.state === 'DEFERRED' && review.remind_at) line2.push(`reminder at ${at(review.remind_at)}`);
+    // Nothing reminds anyone at remind_at: the offer is only put aside until then.
+    if (review.state === 'DEFERRED' && review.remind_at) line2.push(`put aside until ${at(review.remind_at)}`);
     const buttons = [];
     const button = (what, text) => h('button', { type: 'button', class: 'btn small', 'data-act': 'offer', 'data-what': what, 'data-id': review.id, text });
     if (review.can_cancel) buttons.push(button('cancel', 'Cancel'));
@@ -987,7 +984,6 @@
     const relay = !!set.registered;
     const pin = !!set.pin_set;
     const muse = !!(set.muse && set.muse.enabled);
-    const whatsapp = !!(set.whatsapp_enabled && set.pairing && set.pairing.state === 'confirmed');
     const facebook = !!(accounts.facebook && accounts.facebook.connected);
     const instagram = !!(accounts.instagram && accounts.instagram.connected);
     const approvals = !!set.remote_approvals;
@@ -995,11 +991,11 @@
       { name: 'Meta key', done: meta },
       { name: 'Relay', done: relay },
       { name: 'PIN', done: pin },
-      { name: 'Muse or WhatsApp', done: muse || whatsapp },
+      { name: 'Muse', done: muse },
       { name: 'Facebook', done: facebook },
       { name: 'Phone approval', done: approvals },
     ];
-    return { meta, relay, pin, muse, whatsapp, facebook, instagram, approvals, required, allDone: required.every((s) => s.done) };
+    return { meta, relay, pin, muse, facebook, instagram, approvals, required, allDone: required.every((s) => s.done) };
   }
 
   /** A step's badge, status line, and whether it is open: a done step folds to its status
@@ -1067,7 +1063,6 @@
     const muse = set.muse || {};
     let museText = noRelay ? locked : 'No key yet.';
     if (!noRelay && muse.enabled) museText = 'Connected · ' + (muse.last_used ? `last used ${ago(muse.last_used)}` : 'not used yet');
-    else if (!noRelay && steps.whatsapp) museText = 'Not connected. Optional, since WhatsApp is paired.';
     paintStep('step-muse', steps.muse, museText);
     const relayUrl = safeUrl(set.relay_url, true);
     setText('muse-address', relayUrl ? relayUrl.replace(/\/$/, '') + '/mcp' : '');
@@ -1094,36 +1089,6 @@
     show('ig-disconnect', !!ig.connected);
     show('accounts-wait', waiting);
     for (const id of ['fb-connect', 'fb-disconnect', 'ig-disconnect', 'accounts-check']) $(id).disabled = noRelay;
-
-    // 6. WhatsApp (optional)
-    const pairing = set.pairing || {};
-    let waText = noRelay ? locked : 'Off.';
-    if (!noRelay && set.whatsapp_enabled) {
-      waText = pairing.state === 'confirmed' ? `Paired with the number ending in ${pairing.tail || '····'}.`
-        : pairing.state === 'awaiting_confirm' ? 'A code arrived. Confirm the number.'
-          : pairing.state === 'pending' ? 'Waiting for the code from your phone.' : 'On, but no number is paired yet.';
-    }
-    paintStep('step-whatsapp', steps.whatsapp, waText);
-    const waBox = $('wa-enabled');
-    if (document.activeElement !== waBox) waBox.checked = !!set.whatsapp_enabled;
-    waBox.disabled = noRelay;
-    show('wa-more', !noRelay && !!set.whatsapp_enabled);
-    show('wa-paired', pairing.state === 'confirmed');
-    setText('wa-tail-ok', pairing.tail || '····');
-    show('wa-confirm-box', pairing.state === 'awaiting_confirm');
-    setText('wa-tail', pairing.tail || '····');
-    if (pairing.state === 'confirmed' || pairing.state === 'awaiting_confirm') show('wa-pair-box', false);
-    setText('wa-pair', pairing.state === 'confirmed' ? 'Pair a different number' : 'Pair my WhatsApp number');
-    $('wa-test').disabled = pairing.state !== 'confirmed';
-    for (const [id, key] of [['wa-finish', 'notify_on_finish'], ['wa-fail', 'notify_on_fail'], ['wa-publish', 'notify_on_publish']]) {
-      if (document.activeElement !== $(id)) $(id).checked = !!set[key];
-    }
-    const templates = Object.entries(set.templates || {});
-    keyed($('wa-templates'), templates.length ? templates : [['', '']], (t) => t[0] || 'none', (t) => t[1],
-      (t) => (t[0]
-        ? h('li', {}, h('span', { class: 'mono', text: t[0] }),
-          h('span', { class: t[1] === 'APPROVED' ? 'ok-text' : t[1] === 'REJECTED' ? 'bad-text' : 'warn-text', text: TEMPLATE_WORDS[t[1]] || String(t[1]).toLowerCase() }))
-        : h('li', { text: 'Not checked yet. Meta must approve them before WhatsApp can message you first.' })));
 
     // Publishing
     const why = (S.ra && S.ra.can_enable_remote_approval) || '';
@@ -1378,47 +1343,6 @@
       note('accounts-note', 'Checked with the relay.', 'ok');
     }));
 
-    // 6. WhatsApp
-    $('wa-enabled').addEventListener('change', (e) => act(e.currentTarget, 'wa-note', async () => {
-      await patchRA({ whatsapp_enabled: e.target.checked }, 'wa-note', e.target.checked ? 'WhatsApp messages are on.' : 'WhatsApp messages are off.');
-    }));
-    $('wa-pair').addEventListener('click', (e) => act(e.currentTarget, 'wa-note', async () => {
-      const got = await api('POST', '/remote-approval/pair/start');
-      setText('wa-code', (got && got.code) || '');
-      const link = safeUrl(got && got.link);
-      $('wa-link').href = link || '#';
-      show('wa-link', !!link);
-      setText('wa-expires', got && got.expires_at ? `The code works until ${at(got.expires_at)}.` : '');
-      show('wa-pair-box', true);
-      note('wa-note', '');
-    }));
-    $('wa-sent').addEventListener('click', (e) => act(e.currentTarget, 'wa-note', async () => {
-      const got = await api('POST', '/remote-approval/refresh');
-      takeRA(got);
-      const state = ((got && got.settings && got.settings.pairing) || {}).state;
-      if (state !== 'awaiting_confirm' && state !== 'confirmed') note('wa-note', "The code hasn't arrived yet. Wait a few seconds and try again.", 'warn');
-    }));
-    for (const [id, yes] of [['wa-yes', true], ['wa-no', false]]) {
-      $(id).addEventListener('click', (e) => act(e.currentTarget, 'wa-note', async () => {
-        takeRA(await api('POST', '/remote-approval/pair/confirm', { confirm: yes }));
-        note('wa-note', yes ? 'Paired.' : "Not paired. That number won't get messages.", yes ? 'ok' : 'warn');
-      }));
-    }
-    $('wa-test').addEventListener('click', (e) => act(e.currentTarget, 'wa-note', async () => {
-      await api('POST', '/remote-approval/test');
-      note('wa-note', 'A test message is on its way.', 'ok');
-    }));
-    for (const [id, key] of [['wa-finish', 'notify_on_finish'], ['wa-fail', 'notify_on_fail'], ['wa-publish', 'notify_on_publish']]) {
-      $(id).addEventListener('change', (e) => act(e.currentTarget, 'wa-note', () => patchRA({ [key]: e.target.checked }, 'wa-note', 'Saved.')));
-    }
-    for (const [id, create] of [['wa-tpl-check', false], ['wa-tpl-submit', true]]) {
-      $(id).addEventListener('click', (e) => act(e.currentTarget, 'wa-note', async () => {
-        await api('POST', '/remote-approval/templates', { create });
-        takeRA(await api('GET', '/remote-approval/status'));
-        note('wa-note', create ? 'Sent to Meta for review. It can take a while.' : 'Checked.', 'ok');
-      }));
-    }
-
     // Publishing
     $('approvals').addEventListener('change', (e) => act(e.currentTarget, 'approvals-note', async () => {
       const on = e.target.checked;
@@ -1533,11 +1457,9 @@
     const ra = S.ra && S.ra.usage;
     const facts = [];
     if (ra) {
-      const wa = ra.whatsapp || {};
       const graph = ra.meta_graph || {};
-      facts.push(['WhatsApp template messages', String(wa.templates || 0)], ['WhatsApp replies (free)', String(wa.free_form || 0)],
-        ['WhatsApp cost (est.)', usd(wa.usd)], ['Graph API steps', String(graph.steps || 0)],
-        ['Reels uploaded', String(graph.uploads || 0)], ['Sent to Meta', size(graph.bytes || 0)]);
+      facts.push(['Graph API steps', String(graph.steps || 0)], ['Reels uploaded', String(graph.uploads || 0)],
+        ['Sent to Meta', size(graph.bytes || 0)]);
     } else {
       facts.push(['Phone approval', S.raError || 'Checking…']);
     }

@@ -291,6 +291,24 @@ def test_a_relay_that_is_down_is_retried_later_and_a_refusal_is_not(db, on):
     assert store.get_review(db, review_id)["error"] == "No WhatsApp number is paired."
 
 
+def test_a_relay_with_no_muse_key_is_told_in_the_apps_words(db, on):
+    # The relay's own text for this names its other channel and the desktop
+    # edition's settings; the dashboard shows what to do here instead.
+    job = finished_job(db, on)
+    review_id = notifier.on_job_finished(db, job, "done")
+    relay = FakeRelay()
+    relay.fail["notify"] = RelayError("no_channel", "WhatsApp messages are off on your PC and Muse is not "
+                                      "connected, so nothing can tell you about this offer.", status=409)
+    service.flush_outbox(db, relay)
+    wanted = "The relay has no Muse key for this app. Make a Muse key in Setup, then Send again."
+    review = store.get_review(db, review_id)
+    assert review["state"] == states.NOTIFICATION_PENDING and review["error"] == wanted
+    row = db.conn.execute("SELECT * FROM remote_outbox").fetchone()
+    assert row["status"] == "failed" and row["error"] == wanted
+    [failed] = [a for a in store.audit_log(db, review_id) if a["action"] == "notify_failed"]
+    assert failed["detail"] == wanted
+
+
 # ---- Muse Spark's captions --------------------------------------------------------------
 
 
@@ -794,7 +812,10 @@ def test_saved_settings_naming_a_place_an_offer_cant_post_to_still_load(db):
 
 def test_remote_approval_needs_pairing_and_a_pin_first(db):
     ra_settings.save(db, {"whatsapp_enabled": True})
-    assert "Pair" in service.can_enable_remote_approval(db)
+    # WhatsApp on but no number confirmed: the note asks for Muse, the
+    # dashboard's only way to reach the phone.
+    why = service.can_enable_remote_approval(db)
+    assert "Muse" in why and "WhatsApp" not in why
     ra_settings.save(db, {"pairing": {"state": "confirmed"}}, internal=True)
     assert "PIN" in service.can_enable_remote_approval(db)
     ra_settings.save(db, {"pin_set": True}, internal=True)

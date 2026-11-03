@@ -77,8 +77,7 @@ Settings such as the port are environment variables, all listed in
 
 ## Phone approval, with the mock relay
 
-The relay has a local mode with Meta faked: nothing is sent to WhatsApp and
-nothing is posted anywhere.
+The relay has a local mode with Meta faked: nothing is posted anywhere.
 
 1. In a second terminal: `cd meta-relay`, then `npm run dev`. It prints its
    address (`http://127.0.0.1:8787`) and an enrolment key.
@@ -99,17 +98,8 @@ nothing is posted anywhere.
      -d '{"url":"<that address>"}'
    ```
 
-6. Optional, **Setup → WhatsApp**: start pairing to get a code like
-   `LINK K7QM2X`, play the phone sending it, then confirm the number in the
-   dashboard:
-
-   ```
-   curl -X POST http://127.0.0.1:8787/__mock/phone -H "Content-Type: application/json" \
-     -d '{"text":"LINK K7QM2X"}'
-   ```
-
-7. Switch on **Let me approve publishing from my phone**.
-8. Upload a short clip. When the job is done, the offer shows under **Phone
+6. Switch on **Let me approve publishing from my phone**.
+7. Upload a short clip. When the job is done, the offer shows under **Phone
    offers**. Ask the relay for it the way Muse would:
 
    ```
@@ -117,7 +107,7 @@ nothing is posted anywhere.
    curl -H "Authorization: Bearer $MUSE_KEY" http://127.0.0.1:8787/muse/v1/offers/<approval_id>/link
    ```
 
-9. Open that link: watch the clips, tick them and the places, confirm, and
+8. Open that link: watch the clips, tick them and the places, confirm, and
    enter your PIN. The app picks the approval up and publishes to the fake
    Graph API. `http://127.0.0.1:8787/__mock/state` lists the fake posts, and
    **Phone offers** shows the result.

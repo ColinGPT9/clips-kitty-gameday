@@ -75,7 +75,7 @@ def test_reads_need_no_header_and_hold_no_secret(gd):
 
 def test_remote_approval_is_refused_until_paired_with_a_pin(gd):
     r = gd.patch("/remote-approval/settings", json={"whatsapp_enabled": True, "remote_approvals": True})
-    assert r.status_code == 409 and "Pair" in r.json()["error"]
+    assert r.status_code == 409 and "Make a Muse key" in r.json()["error"]
     status = gd.get("/remote-approval/status").json()
     assert status["settings"]["whatsapp_enabled"] is True  # the rest of the change was kept
     assert status["settings"]["remote_approvals"] is False

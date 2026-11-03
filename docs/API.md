@@ -137,7 +137,7 @@ The dashboard sends it with `XMLHttpRequest` so it can show upload progress.
  "recent": [{"at": 1762230000.0, "model": "sam-3.1", "purpose": "track", "ok": true, "status": 200,
              "ms": 17300, "cost_usd": 0.08, "job_id": 9, "error": ""}]}
 ```
-`recent` holds the last 50 calls. The WhatsApp and Graph counts stay in `GET /remote-approval/status`, as this week's code reports them.
+`recent` holds the last 50 calls. The Graph API counts stay in `GET /remote-approval/status`, as this week's code reports them.
 
 `GET /api/events?after=0&limit=100`:
 ```json
@@ -145,7 +145,7 @@ The dashboard sends it with `XMLHttpRequest` so it can show upload progress.
 ```
 Events come oldest first. `level` is `info`, `warn` or `error`.
 
-## Phone approval, Muse, WhatsApp and accounts
+## Phone approval, Muse and accounts
 
 These are the `/remote-approval/...` routes from this week's
 `server/remote_approval_api.py` (event branch at 0e811c3), with the same paths
@@ -156,16 +156,16 @@ answer:
 - `PATCH /remote-approval/settings`
 - `POST /remote-approval/register`
 - `POST /remote-approval/refresh`
-- `POST /remote-approval/pair/start`
-- `POST /remote-approval/pair/confirm`
+- `POST /remote-approval/pair/start` (WhatsApp pairing; not used by the dashboard)
+- `POST /remote-approval/pair/confirm` (WhatsApp pairing; not used by the dashboard)
 - `POST /remote-approval/pin`
 - `POST /remote-approval/muse/token`
 - `POST /remote-approval/muse/revoke`
-- `POST /remote-approval/test`
+- `POST /remote-approval/test` (a WhatsApp test message; not used by the dashboard)
 - `POST /remote-approval/disconnect`
 - `POST /remote-approval/accounts/connect`
 - `POST /remote-approval/accounts/disconnect`
-- `POST /remote-approval/templates`
+- `POST /remote-approval/templates` (WhatsApp message templates; not used by the dashboard)
 - `GET /remote-approval/reviews`
 - `GET /remote-approval/reviews/{id}`
 - `POST /remote-approval/reviews/{id}/cancel`
