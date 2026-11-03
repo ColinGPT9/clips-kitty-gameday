@@ -72,13 +72,13 @@ The dashboard sends it with `XMLHttpRequest` so it can show upload progress.
 | Route | Body | Answer |
 |---|---|---|
 | `GET /api/watches` | | `[Watch]` |
-| `POST /api/watches` | `{"path": "/data/watch"}` | `Watch` |
+| `POST /api/watches` | `{"path": "/watch"}` | `Watch` |
 | `PATCH /api/watches/{id}` | `{"enabled": false}` | `Watch` |
 | `DELETE /api/watches/{id}` | | `{"deleted": true}` |
 
 `Watch`:
 ```json
-{"id": 1, "path": "/data/watch", "enabled": true, "last_checked_at": 1762230000.0,
+{"id": 1, "path": "/watch", "enabled": true, "last_checked_at": 1762230000.0,
  "videos": 3, "error": ""}
 ```
 - The folder must exist and be readable, and must not be inside `DATA_DIR`; otherwise the answer is 400.

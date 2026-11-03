@@ -15,10 +15,46 @@ were copied here without code from before the event.
 
 ### Event code brought in for the web app's phone approval
 
-The lead fills this in at merge, one row per file, from the same event branch.
+All of these come from the same event branch at 0e811c3. "First added" is
+the commit that created the source file. Every one of them is dated 29 Oct
+2026 or later.
 
-| Path here | Source | Source commit | Notes |
+These files were ported whole and adapted to the new store and the Meta
+client:
+
+| Path here | Source | First added | Notes |
 |---|---|---|---|
+| `gameday/remote_approval/states.py` | `remote_approval/states.py` | 819f66f (29 Oct 2026) | unchanged |
+| `gameday/remote_approval/relay.py` | `remote_approval/relay.py` | 819f66f (29 Oct 2026) | relay protocol unchanged |
+| `gameday/remote_approval/{__init__,store,settings,summary,captions,usage,notifier,commands,service,publishing}.py` | same names under `remote_approval/` | 819f66f (29 Oct 2026) | gaming labels and other publishers dropped; Muse Spark through `gameday.meta_api` |
+| `gameday/remote_approval/previews.py` | `remote_approval/previews.py` | 0e811c3 (2 Nov 2026) | |
+| `gameday/routes/remote.py` | `server/remote_approval_api.py` | 05d0d67 (29 Oct 2026) | same paths and JSON; Basic auth instead of the desktop session |
+| `gameday/publish/meta_graph.py` | `publish/meta_graph.py` | 819f66f (29 Oct 2026) | its error types were rewritten fresh in `gameday/publish/errors.py` |
+| `gameday/watch/folder.py` | `sources/folder_feed.py` | 7fb3272 (30 Oct 2026) | plus the event's picked-folder lines from `core/paths.py` (7fb3272) |
+
+For these older files, only the lines added during the event were ported:
+
+| Path here | Source file | Event commits | What |
+|---|---|---|---|
+| `gameday/store.py` (the `remote_*` tables) | `core/state.py` | 819f66f (29 Oct), 0e811c3 (2 Nov) | the approval tables and their methods |
+| `gameday/worker.py` | `server/jobs.py`, `server/publisher.py` | 819f66f, 17d63c5, 094057a, 05d0d67 (29–30 Oct), 56affc6 (2 Nov) | offer the clips when a job ends; post approved clips |
+| `gameday/watch/watcher.py`, `notifier.why_not_offered` | `server/automation.py` | 7fb3272, f6099c1, 4d7078d (30 Oct) | folder polling, the phone checks, the data-folder check |
+
+The event's tests were ported to the new store:
+
+| Path here | Source | First added |
+|---|---|---|
+| `tests/platform/test_platform_remote_approval.py` | `tests/test_remote_approval.py` | 0ee8a02 (29 Oct 2026) |
+| `tests/platform/test_platform_remote_approval_api.py` | `tests/test_remote_approval_api.py` | 05d0d67 (29 Oct 2026) |
+| `tests/platform/test_platform_remote_approval_e2e.py` | `tests/test_remote_approval_e2e.py` | 0ee8a02 (29 Oct 2026) |
+| `tests/platform/test_platform_remote_approval_previews.py` | `tests/test_remote_approval_previews.py` | 0e811c3 (2 Nov 2026) |
+| `tests/platform/test_platform_meta_graph.py` | `tests/test_meta_graph.py` | 0ee8a02 (29 Oct 2026) |
+| `tests/platform/test_platform_folder_feed.py` | `tests/test_folder_feed.py` | 7fb3272 (30 Oct 2026) |
+| `tests/platform/platform_fakes.py` | `tests/remote_approval_fake.py` | 0ee8a02 (29 Oct 2026) |
+
+The Muse Voice client (`gameday/meta_api/voice.py`) was written here. Its
+request shape follows the event's Muse Voice code, first added in 9d5fb39
+(29 Oct 2026).
 
 ## Written in this repository (from 3 Nov 2026)
 
