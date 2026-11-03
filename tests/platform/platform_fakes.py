@@ -327,3 +327,85 @@ def ffmpeg_ok() -> bool:
     from gameday import media
 
     return bool(shutil.which(media.FFMPEG) and shutil.which(media.FFPROBE))
+
+
+class Phone:
+    """The owner's phone and browser, against the mock relay (meta-relay/test/serve.mjs)."""
+
+    def __init__(self, url):
+        self.url = url
+
+    def _post(self, path, body):
+        import requests
+
+        return requests.post(self.url + path, json=body, timeout=10).json()
+
+    def state(self):
+        import requests
+
+        return requests.get(self.url + "/__mock/state", timeout=10).json()
+
+    def send(self, text):
+        return self._post("/__mock/phone", {"text": text})
+
+    def tap(self, payload, context=""):
+        return self._post("/__mock/tap", {"payload": payload, "context": context})
+
+    def oauth(self, url):
+        return self._post("/__mock/oauth", {"url": url})
+
+    def status(self, wamid, status, code=None):
+        return self._post("/__mock/status", {"wamid": wamid, "status": status, "code": code})
+
+    def last_message(self):
+        return self.state()["messages"][-1]
+
+    def link_token(self, message):
+        """The approval link's token, from a template's URL button or the
+        cta_url fallback."""
+        if message.get("type") == "template":
+            button = next(c for c in message["template"]["components"] if c.get("sub_type") == "url")
+            return button["parameters"][0]["text"]
+        return re.search(r"/a/([A-Za-z0-9_-]{20,})", json.dumps(message))[1]
+
+    def open(self, token):
+        import requests
+
+        r = requests.get(f"{self.url}/a/{token}", timeout=10)
+        return r.status_code, r.text
+
+    def submit(self, token, fields):
+        import requests
+
+        r = requests.post(f"{self.url}/a/{token}", data=fields, headers={"Origin": self.url}, timeout=10)
+        return r.status_code, r.text
+
+
+def csrf_of(html):
+    return re.search(r'name="csrf" value="([0-9a-f]{64})"', html)[1]
+
+
+class Muse:
+    """The owner's Muse agent: its servers calling the relay's MCP server
+    with the key from the dashboard, the way a custom connector does."""
+
+    def __init__(self, url, key):
+        self.url = url
+        self.key = key
+        self.n = 0
+
+    def rpc(self, method, params=None):
+        import requests
+
+        self.n += 1
+        r = requests.post(self.url + "/mcp", json={"jsonrpc": "2.0", "id": self.n, "method": method,
+                                                   "params": params or {}},
+                          headers={"Authorization": f"Bearer {self.key}",
+                                   "Accept": "application/json, text/event-stream"}, timeout=10)
+        assert r.status_code == 200, r.text
+        return r.json()["result"]
+
+    def tool(self, name, **args):
+        result = self.rpc("tools/call", {"name": name, "arguments": args})
+        assert result["isError"] is False, result["content"][0]["text"]
+        return result["structuredContent"]
