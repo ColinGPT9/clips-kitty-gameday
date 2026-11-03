@@ -105,35 +105,40 @@ def _wrap(draw: ImageDraw.ImageDraw, text: str, face, width: int) -> list[str]:
 
 
 def title_card(title: str, category: str, out: Path) -> Path:
-    """A transparent 1080x1920 PNG: the title on a dark rounded band in the upper third."""
+    """A transparent 1080x1920 PNG: the title, small, on a dark band that hugs it, in the upper part.
+
+    Kept compact so it never covers the play: at most 60 px text on two lines
+    (three only for very long titles), and a band only as wide as the words."""
     img = Image.new("RGBA", (OUT_W, OUT_H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     text = " ".join(title.split()) or "Highlight"
-    inner = 900
-    size, lines, face = 88, [], font(88)
-    while size >= 44:
+    inner = 760
+    size, lines, face = 60, [], font(60)
+    while size >= 38:
         face = font(size)
         lines = _wrap(draw, text, face, inner)
-        if len(lines) <= 3 and all(draw.textlength(line, font=face) <= inner for line in lines):
+        if len(lines) <= 2 and all(draw.textlength(line, font=face) <= inner for line in lines):
             break
-        size -= 6
+        size -= 4
     if len(lines) > 3:
-        lines = textwrap.wrap(text, 28)[:3]
-    chip_face = font(40)
+        lines = textwrap.wrap(text, 34)[:3]
+    chip_face = font(28)
     chip = CATEGORY_WORDS.get(category, "")
-    line_h = int(size * 1.18)
-    pad = 44
-    chip_h = 64 if chip else 0
-    top = 300
-    band_h = pad * 2 + chip_h + line_h * len(lines)
-    draw.rounded_rectangle([60, top, OUT_W - 60, top + band_h], radius=40, fill=(12, 12, 18, 205))
-    y = top + pad
+    line_h = int(size * 1.2)
+    pad_x, pad_y = 34, 24
+    chip_h, chip_gap = (40, 12) if chip else (0, 0)
+    chip_w = int(draw.textlength(chip, font=chip_face)) + 32 if chip else 0
+    text_w = max(int(draw.textlength(line, font=face)) for line in lines)
+    band_w = min(OUT_W - 80, max(text_w, chip_w) + pad_x * 2)
+    band_h = pad_y * 2 + chip_h + chip_gap + line_h * len(lines)
+    left, top = (OUT_W - band_w) // 2, 240
+    draw.rounded_rectangle([left, top, left + band_w, top + band_h], radius=26, fill=(12, 12, 18, 190))
+    y = top + pad_y
     if chip:
-        cw = int(draw.textlength(chip, font=chip_face)) + 40
-        cx = (OUT_W - cw) // 2
-        draw.rounded_rectangle([cx, y, cx + cw, y + 52], radius=26, fill=(255, 196, 0, 255))
-        draw.text((OUT_W // 2, y + 26), chip, font=chip_face, fill=(20, 20, 20, 255), anchor="mm")
-        y += chip_h
+        cx = (OUT_W - chip_w) // 2
+        draw.rounded_rectangle([cx, y, cx + chip_w, y + chip_h], radius=20, fill=(255, 196, 0, 255))
+        draw.text((OUT_W // 2, y + chip_h // 2), chip, font=chip_face, fill=(20, 20, 20, 255), anchor="mm")
+        y += chip_h + chip_gap
     for line in lines:
         draw.text((OUT_W // 2, y + line_h // 2), line, font=face, fill=(255, 255, 255, 255), anchor="mm",
                   stroke_width=2, stroke_fill=(0, 0, 0, 255))
