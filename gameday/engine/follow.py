@@ -163,8 +163,9 @@ def track_clip(work: ClipWork, *, source: Path, source_size: tuple[int, int], du
 
     work.start_s, work.end_s = moments.refine(work.moment, cuts=work.cuts, sents=sents, duration_s=duration_s,
                                               options=options, window=(ws, we), cutaway=cutaway)
-    log.info("%s: play at %.2f, clip %.2f-%.2f; cuts near it: %s", name, work.moment.play_s, work.start_s,
-             work.end_s, _cuts_near(work, track, fps))
+    at_cut = any(abs(c - moments.CUT_GUARD_S - work.end_s) < 0.011 for c in work.cuts)
+    log.info("%s: play at %.2f, clip %.2f-%.2f %s; cuts near it: %s", name, work.moment.play_s, work.start_s,
+             work.end_s, "ending at a cut" if at_cut else "ending on the talk", _cuts_near(work, track, fps))
 
     # The window's path.
     if work.facts is None:

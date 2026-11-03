@@ -130,11 +130,58 @@ def test_a_silent_audio_track_spreads_the_clips_like_no_sound_at_all(level):
 
 # --- the owner's clip rules ------------------------------------------------------------
 
+def before(cut: float) -> float:
+    """Where a clip ending at `cut` ends: on the frame before it."""
+    return round(cut - moments.CUT_GUARD_S, 2)
+
+
 def test_the_clip_ends_at_the_broadcast_cut_after_the_call():
     sents = [s(97.0, 98.5, "He pulls up."), s(100.5, 102.5, "Bang, he hits the three!"), s(103.0, 104.0),
              s(108.0, 110.0, "Timeout on the floor.")]
     start, end = moments.refine(moment(), cuts=[104.6, 112.0], sents=sents, duration_s=400.0, options=OPTS)
-    assert (start, end) == (90.0, 104.6)
+    assert (start, end) == (90.0, before(104.6))
+    assert 104.6 - end >= 1 / 30  # not one frame of the next shot
+
+
+def test_the_cut_wins_over_the_talk_even_mid_sentence():
+    # The dunk at 100, a close-up from 102.6, back to the wide for the next possession at 106.5. The
+    # announcer talks about the dunk until 110.5: before, the clip ran to the end of his sentence.
+    sents = [s(99.8, 101.5, "Number 21 with the emphatic jam."),
+             s(102.0, 110.5, "Just made the decision to go by him knowing he can't jump with him and finishes")]
+    start, end = moments.refine(moment(start=95.0, category="dunks"), cuts=[102.6, 106.5, 111.0], sents=sents,
+                                duration_s=400.0, options=OPTS)
+    assert end == before(102.6)
+    assert end - start == pytest.approx(OPTS.min_clip_s)  # the lead-up grows instead
+
+
+def test_a_cut_soon_after_the_talk_still_ends_the_play_but_one_long_after_does_not():
+    sents = [s(100.5, 101.5, "Three!")]
+    _, end = moments.refine(moment(), cuts=[104.8], sents=sents, duration_s=400.0, options=OPTS)
+    assert end == before(104.8)  # within the 5.5 s after the play: the broadcast's own end
+    _, end = moments.refine(moment(), cuts=[107.5], sents=sents, duration_s=400.0, options=OPTS)
+    assert end == pytest.approx(102.0)  # one court shot: the talk decides, well before that cut
+
+
+def test_a_replay_wipe_after_the_play_ends_the_clip_where_it_begins():
+    sents = [s(100.5, 101.5, "Three!"), s(102.0, 106.0, "Let's see that one again.")]
+    _, end = moments.refine(moment(), cuts=[103.1, 103.63, 104.0], sents=sents, duration_s=400.0, options=OPTS)
+    assert end == before(103.1)
+
+
+def test_a_play_time_inside_the_cutaway_after_the_play_ends_where_the_cutaway_began():
+    # Muse Spark put the play at 103, but 101.8-105 is a close-up without the ball: the call was heard over it.
+    def cutaway(a, b):
+        return (a, b) == (101.8, 105.0)
+
+    sents = [s(102.5, 104.0, "What a finish!")]
+    m = moment(play=103.0, category="dunks")
+    _, end = moments.refine(m, cuts=[101.8, 105.0], sents=sents, duration_s=400.0, options=OPTS, cutaway=cutaway)
+    assert end == before(101.8)
+    _, end = moments.refine(m, cuts=[101.8, 105.0], sents=sents, duration_s=400.0, options=OPTS)
+    assert end == before(105.0)  # without SAM there's no telling: the first cut after the play
+    _, end = moments.refine(m, cuts=[101.8, 105.0], sents=sents, duration_s=400.0, options=OPTS,
+                            cutaway=lambda a, b: False)
+    assert end == before(105.0)  # the play's own court shot
 
 
 def test_it_stops_before_a_new_sentence_that_starts_too_long_after_the_play():
@@ -155,13 +202,13 @@ def test_after_a_block_or_steal_the_talk_allowance_is_shorter():
 def test_there_is_no_end_pad_past_a_cut():
     sents = [s(100.5, 101.5, "Three!")]
     _, end = moments.refine(moment(), cuts=[101.8], sents=sents, duration_s=400.0, options=OPTS)
-    assert end == pytest.approx(101.8)
+    assert end == before(101.8)
 
 
 def test_the_next_scene_never_hangs_over_the_end():
     sents = [s(100.5, 101.5, "Three!"), s(102.0, 104.0, "And he has been hot all night.")]
     _, end = moments.refine(moment(), cuts=[103.5], sents=sents, duration_s=400.0, options=OPTS)
-    assert end == pytest.approx(103.5)
+    assert end == before(103.5)
 
 
 def test_it_never_opens_on_a_cutaway_or_a_flash_of_the_shot_before():
@@ -174,20 +221,36 @@ def test_it_never_opens_on_a_cutaway_or_a_flash_of_the_shot_before():
     start, _ = moments.refine(moment(start=85.0), cuts=[86.0, 89.0], sents=[s(100.5, 101.5, "Yes!")],
                               duration_s=400.0, options=OPTS)
     assert start == 86.0  # without SAM it only skips the flash
+    start, _ = moments.refine(moment(start=85.0), cuts=[86.8, 95.0], sents=[s(100.5, 101.5, "Yes!")],
+                              duration_s=400.0, options=OPTS)
+    assert start == 86.8  # 1.8 s of the shot before is still a flash
 
 
-def test_a_short_clip_grows_its_lead_up_rather_than_running_past_the_cut_that_ends_it():
-    # The lead-up shot 88-97 is a crowd cutaway, the call ends the play at the cut 102.8 (then a replay).
-    def cutaway(a, b):
+def test_a_cut_that_comes_early_leaves_the_clip_short_but_not_too_short():
+    # The lead-up shot 88-97 is a crowd cutaway, and the cut at 102.8 ends the play (then a replay).
+    def crowd(a, b):
         return (a, b) == (88.0, 97.0)
 
     start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 102.8, 108.0],
-                                sents=[s(100.5, 102.0, "Blocked!")], duration_s=400.0, options=OPTS, cutaway=cutaway)
-    assert end == pytest.approx(102.8) and end - start == pytest.approx(OPTS.min_clip_s)
-    # A play in the first seconds: the end may grow, but never across another cut.
+                                sents=[s(100.5, 102.0, "Blocked!")], duration_s=400.0, options=OPTS, cutaway=crowd)
+    assert (start, end) == (97.0, before(102.8))  # under the minimum, but it never opens on the crowd
+    # Under 5 s: it opens on the crowd after all, to make 6 s...
+    blocked = [s(100.2, 100.8, "Blocked!")]
+    start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 101.0, 108.0], sents=blocked,
+                                duration_s=400.0, options=OPTS, cutaway=crowd)
+    assert end == before(101.0) and end - start == pytest.approx(moments.SHORTEST_S)
+    # ...but with 2 s of it at least, never a flash.
+    start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 101.5, 108.0], sents=blocked,
+                                duration_s=400.0, options=OPTS, cutaway=crowd)
+    assert end == before(101.5) and start == pytest.approx(97.0 - moments.FLASH_S)
+    # A play in the first seconds: the end never grows into the next shot.
     start, end = moments.refine(moment(play=3.0, start=0.0, category="blocks"), cuts=[5.5, 9.0],
                                 sents=[s(3.2, 4.5, "Blocked!")], duration_s=400.0, options=OPTS)
-    assert (start, end) == (0.0, 9.0)
+    assert (start, end) == (0.0, before(5.5))
+    # In one court shot it may.
+    start, end = moments.refine(moment(play=3.0, start=0.0, category="blocks"), cuts=[],
+                                sents=[s(3.2, 4.5, "Blocked!")], duration_s=400.0, options=OPTS)
+    assert (start, end) == (0.0, OPTS.min_clip_s)
 
 
 def test_it_starts_a_few_seconds_before_the_call():
