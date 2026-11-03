@@ -426,7 +426,8 @@ b, strong { font-weight: var(--ck-w-semi); }
 .input.search { width: 288px; padding: 4px 12px; font-size: var(--ck-t14); line-height: 20px; }
 .mono-input { font-family: var(--ck-mono); font-size: var(--ck-t14); }
 select.input { cursor: pointer; }
-textarea.input { display: block; resize: vertical; }
+/* Grows with what is typed where browsers can (field-sizing); never under three lines. */
+textarea.input { display: block; resize: vertical; field-sizing: content; min-height: 90px; }
 
 .form { display: flex; flex-direction: column; gap: var(--ck-gap-1); }
 .form .label:not(:first-child) { margin-top: var(--ck-gap-2); }
