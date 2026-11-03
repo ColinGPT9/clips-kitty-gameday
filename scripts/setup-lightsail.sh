@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Set up Clips Kitty Game Day on a fresh Ubuntu 24.04 server, such as AWS Lightsail.
 #
-#   sudo bash scripts/setup-lightsail.sh <domain>
+#   sudo bash scripts/setup-lightsail.sh <domain> [max_upload_gb]
 #
 # <domain> is the dashboard's address. With a static IP of 203.0.113.7, use
 # 203-0-113-7.sslip.io: it needs no DNS setup, and Caddy gets an HTTPS
-# certificate for it. To update later, git pull and run this script again.
+# certificate for it. [max_upload_gb] is the biggest game you can upload
+# (default 4). Keep it well under the server's free disk. To update later,
+# git pull and run this script again.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -18,6 +20,10 @@ if [ -z "$DOMAIN" ]; then
   exit 1
 fi
 
+MAX_GB="${2:-4}"
+case "$MAX_GB" in
+  ''|*[!0-9]*) echo "max_upload_gb must be a whole number of gigabytes, like 4 or 20" >&2; exit 1 ;;
+esac
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_USER="${SUDO_USER:-root}"
 DATA_DIR=/var/lib/gameday
@@ -55,6 +61,7 @@ Environment=DATA_DIR=$DATA_DIR
 Environment=WATCH_DIR=$WATCH_DIR
 Environment=HOST=127.0.0.1
 Environment=PORT=8080
+Environment=MAX_UPLOAD_MB=$((MAX_GB * 1024))
 ExecStart=$REPO/.venv/bin/python -m gameday
 Restart=always
 RestartSec=3
@@ -67,7 +74,7 @@ EOF
 cat > /etc/caddy/Caddyfile <<EOF
 $DOMAIN {
 	request_body {
-		max_size 4GB
+		max_size ${MAX_GB}GB
 	}
 	header Strict-Transport-Security "max-age=31536000"
 	reverse_proxy 127.0.0.1:8080

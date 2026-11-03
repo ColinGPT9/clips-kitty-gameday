@@ -45,6 +45,10 @@ It takes about 5 minutes.
 - **Games:** upload them on **Game day**, or copy them into `/srv/gameday-watch` with `scp`.
 - **Logs:** `journalctl -u gameday -f`.
 - **Update:** `git pull`, then run the setup script again. Your password and data stay.
+- **Bigger games:** uploads are capped at 4 GB. To raise the cap, run the
+  script again with the new limit in GB, for example
+  `sudo bash scripts/setup-lightsail.sh 203-0-113-7.sslip.io 20`. Keep it well
+  under the disk's free space, since each game also needs room for its clips.
 - **Data** is kept in `/var/lib/gameday`.
 
 ## When you're done

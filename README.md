@@ -159,7 +159,7 @@ Meta's published prices, the same ones the dashboard shows.
 | | What it cost me |
 |---|---|
 | **Meta models, per game video** | **$0.65** for a 22.5-minute game that made 8 clips, about **8 cents a clip**. Muse Voice cost $0.07, Muse Spark $0.02 and SAM 3.1 $0.56. Captions cost under a cent. Posting the Reels to Instagram and Facebook is free. |
-| **Hosting: the server** (AWS Lightsail, 2 vCPUs, 4 GB) | TODO(measured): the plan's price, added once the demo server is running |
+| **Hosting: the server** (AWS Lightsail, 2 vCPUs, 4 GB RAM, 80 GB SSD) | **$24 a month** at Lightsail's price, about 80 cents a day |
 | **Hosting: the relay** (Cloudflare Workers) | $0, on Cloudflare's free plan |
 
 The game run is from 3 Nov 2026; see [docs/TEST_LOG.md](docs/TEST_LOG.md).
