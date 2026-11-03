@@ -253,22 +253,32 @@ def test_a_cut_that_comes_early_leaves_the_clip_short_but_not_too_short():
     assert (start, end) == (0.0, OPTS.min_clip_s)
 
 
-def test_a_play_time_after_its_call_moves_back_to_the_call():
+def test_a_play_time_well_after_its_call_is_checked_against_the_shots_in_between():
     turns = [Turn(80.0, 96.0, "A long stretch about the tournament and then Sam Rivers for three got it"),
              Turn(97.0, 104.0, "Coach called a play for the shooter.")]
-    m = Moment(start_s=85.0, end_s=104.0, play_s=101.0, category="threes", label="l", title="t", score=80.0,
-               evidence="Sam Rivers for three got it")
-    called = moments.evidence_time(m, turns)
     text = turns[0].text
-    assert called == pytest.approx(80.0 + 16.0 * text.index("Sam") / len(text), abs=0.01)
-    moments.not_after_the_call([m], turns)
-    assert m.play_s == pytest.approx(called)
-    near = Moment(start_s=85.0, end_s=104.0, play_s=called + 1.5, category="threes", label="l", title="t",
-                  score=80.0, evidence="Sam Rivers for three got it")
-    unknown = Moment(start_s=85.0, end_s=104.0, play_s=101.0, category="threes", label="l", title="t", score=80.0,
-                     evidence="words nobody said here")
-    moments.not_after_the_call([near, unknown], turns)
-    assert near.play_s == pytest.approx(called + 1.5) and unknown.play_s == 101.0
+    called = 80.0 + 16.0 * text.index("Sam") / len(text)
+
+    def three(evidence="Sam Rivers for three got it"):
+        return Moment(start_s=95.0, end_s=104.0, play_s=101.0, category="threes", label="l", title="t",
+                      score=80.0, evidence=evidence)
+
+    m = three()
+    assert moments.evidence_time(m, turns) == pytest.approx(called, abs=0.01)
+    moments.note_the_calls([m], turns)
+    assert m.called_s == pytest.approx(called, abs=0.01) and m.play_s == 101.0  # kept: the shots decide
+    assert m.start_s == pytest.approx(called - 2 * moments.LEAD_BEFORE_CALL_S, abs=0.01)  # room to cut either way
+    sents, cuts = moments.sentences(turns), [called + 1.2, called + 5.0, 103.0]
+    # A close-up without the ball began after the call: the play time was a late guess.
+    start, end = moments.refine(m, cuts=cuts, sents=sents, duration_s=400.0, options=OPTS,
+                                cutaway=lambda a, b: (a, b) == (cuts[0], cuts[1]))
+    assert end == before(cuts[0]) and start < called - moments.LEAD_BEFORE_CALL_S
+    # Every shot in between has the ball (a free throw announced at the line): the play time stands.
+    _, end = moments.refine(m, cuts=cuts, sents=sents, duration_s=400.0, options=OPTS, cutaway=lambda a, b: False)
+    assert end == before(103.0)
+    unknown = three("words nobody said here")
+    moments.note_the_calls([unknown], turns)
+    assert unknown.called_s is None and unknown.start_s == 95.0
 
 
 def test_it_starts_a_few_seconds_before_the_call():

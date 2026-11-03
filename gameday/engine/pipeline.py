@@ -195,10 +195,10 @@ class _Run:
                 said = [m.play_s for m in found]
                 if options.mode != "talk":
                     moments.snap_to_loudness(found, loud)
-                    moments.not_after_the_call(found, turns)
+                    moments.note_the_calls(found, turns)
                 for m, guess in zip(found, said, strict=True):
-                    log.info("moment: play at %.2f (Muse Spark said %.2f; called at %s), lead-up from %.2f: %s",
-                             m.play_s, guess, moments.evidence_time(m, turns), m.start_s, m.evidence[:80])
+                    log.info("moment: play at %.2f (Muse Spark said %.2f), called at %s, lead-up from %.2f: %s",
+                             m.play_s, guess, m.called_s, m.start_s, m.evidence[:80])
                 picks = moments.drop_overlaps(found, options.max_clips, info.duration_s, options)
                 if not picks:
                     self.warn("Muse Spark found no plays, so the clips were picked on crowd noise.", "spark_empty")

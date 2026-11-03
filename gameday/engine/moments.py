@@ -19,6 +19,7 @@ to the owner's rules:
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections.abc import Callable
@@ -26,6 +27,8 @@ from dataclasses import dataclass
 
 from gameday.engine import loudness as loudness_mod
 from gameday.types import CATEGORIES, PipelineOptions, Turn
+
+log = logging.getLogger(__name__)
 
 SHORT_TAIL = ("blocks", "steals")
 TAIL_S = 5.5
@@ -37,7 +40,7 @@ CUT_GUARD_S = 0.04  # an end this far before its cut leaves out every frame of t
 SHORTEST_S = 6.0  # an end at an early cut may make a clip shorter than the minimum, but not than this
 FLASH_S = 2.0  # an opening shot shorter than this, before a cut, is skipped
 LATE_PLAY_S = 2.5  # a play time this far into a cutaway is the call heard over it: the play came before
-EVIDENCE_LAG_S = 2.0  # a play time this long after its call began is a guess past the call
+EVIDENCE_LAG_S = 2.0  # a play time this long after its call began may be a late guess
 
 PLAIN_TITLES = {
     "clutch": "Clutch play", "dunks": "Huge dunk", "threes": "Big three", "blocks": "Big block",
@@ -68,6 +71,7 @@ class Moment:
     player: str = ""
     evidence: str = ""
     source: str = "spark"  # "spark", or "loudness" when Muse Spark wasn't used
+    called_s: float | None = None  # when the commentators began to say the evidence, if found
 
 
 @dataclass
@@ -281,13 +285,15 @@ def evidence_time(m: Moment, turns: list[Turn]) -> float | None:
     return None if best is None else round(best, 2)
 
 
-def not_after_the_call(moments: list[Moment], turns: list[Turn]) -> None:
-    """A play is called as it happens or just after, so a play time well after the
-    commentators began to say its evidence is a guess past the call: move it back."""
+def note_the_calls(moments: list[Moment], turns: list[Turn]) -> None:
+    """Note when each play was called. A play time well after its call is a late guess,
+    or a play announced before it happened (a free throw "at the line"): SAM's shots
+    tell which, later (ending_cut). Meanwhile the lead-up reaches back past the call, so
+    SAM looks at enough of the game to cut the clip either way."""
     for m in moments:
-        called = evidence_time(m, turns)
-        if called is not None and m.play_s > called + EVIDENCE_LAG_S:
-            m.play_s = round(max(m.start_s, called), 2)
+        m.called_s = evidence_time(m, turns)
+        if m.called_s is not None and m.play_s > m.called_s + EVIDENCE_LAG_S:
+            m.start_s = round(max(0.0, min(m.start_s, m.called_s - 2 * LEAD_BEFORE_CALL_S)), 2)
 
 
 def rough_range(m: Moment, duration_s: float, options: PipelineOptions) -> tuple[float, float]:
@@ -402,22 +408,31 @@ def _on_its_cut(start: float, cuts: list[float], lo: float) -> float:
     return start
 
 
-def ending_cut(play: float, cuts: list[float], cutaway: Cutaway | None, hi: float) -> float | None:
-    """The broadcast's cut that ends the play: the first one after it, or None when
-    the court shot runs on. A play time just inside a cutaway is a late guess (the
-    call is heard over the close-up after the play), so the play ended where that
-    cutaway began."""
-    after = next((c for c in cuts if c > play + 0.05), None)
-    began = max((c for c in cuts if c <= play + 0.05), default=None)
-    if (began is not None and cutaway is not None and play - began <= LATE_PLAY_S
-            and cutaway(began, hi if after is None else after)):
-        return began
-    return after
+def ending_cut(play: float, cuts: list[float], cutaway: Cutaway | None, hi: float,
+               called: float | None = None) -> tuple[float | None, float]:
+    """The broadcast's cut that ends the play (None when the court shot runs on), and
+    when the play was.
+
+    It is the first cut after the play time, unless a cutaway (a shot without the
+    ball: a close-up, the bench) began after the play was called, or just before the
+    play time. Then the play time is a late guess, the call heard over the close-up
+    after the play: the play came just before that cutaway, and ends where it began.
+    A play called before it happened (a free throw "at the line") has no cutaway
+    between its call and its time, so it keeps its time."""
+    if cutaway is not None:
+        since = play - LATE_PLAY_S if called is None else min(called, play - LATE_PLAY_S)
+        for i, c in enumerate(cuts):
+            if since < c <= play + 0.05 and cutaway(c, cuts[i + 1] if i + 1 < len(cuts) else hi):
+                log.info("play time %.2f is past the cutaway that began at %.2f: the play ends there", play, c)
+                return c, min(play, c - 1.0)
+    return next((c for c in cuts if c > play + 0.05), None), play
 
 
 def _end(m: Moment, play: float, cuts: list[float], sents: list[Sentence], hi: float,
-         cutaway: Cutaway | None) -> tuple[float, bool]:
-    """Where the clip ends, and whether that is at a cut (an end at a cut never moves later)."""
+         cutaway: Cutaway | None) -> tuple[float, bool, float]:
+    """Where the clip ends, whether that is at a cut (an end at a cut never moves later),
+    and when the play was."""
+    cut, play = ending_cut(play, cuts, cutaway, hi, m.called_s)
     tail = SHORT_TAIL_S if m.category in SHORT_TAIL else TAIL_S
     about = [s for s in sents if s.end_s > play - 1.0 and s.start_s <= play + tail]
     later = [s.start_s for s in sents if s.start_s > play + tail]
@@ -425,13 +440,12 @@ def _end(m: Moment, play: float, cuts: list[float], sents: list[Sentence], hi: f
     said = bool(about)
     speech_end = min(max(s.end_s for s in about), play + MAX_SPEECH_AFTER_S) if said else play
     talk_end = min(max(play + 2.0, speech_end + 0.4) if said else play + 3.0, hard_stop)
-    cut = ending_cut(play, cuts, cutaway, hi)
     # The cut wins over the talk, even mid-sentence; a cut soon after the talk is still where the play ends.
     reach = max(talk_end + (1.2 if said else 5.0), play + tail)
     if cut is not None and cut <= min(reach, hard_stop):
-        return cut - CUT_GUARD_S, True
+        return cut - CUT_GUARD_S, True, play
     # One court shot: the talk decides.
-    return max(talk_end, min(hi, play + 1.0)), False
+    return max(talk_end, min(hi, play + 1.0)), False, play
 
 
 def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: float, options: PipelineOptions,
@@ -444,7 +458,7 @@ def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: f
     if options.mode == "talk":
         return _refine_talk(m, cuts=cuts, sents=sents, lo=lo, hi=hi, options=options)
 
-    end, at_cut = _end(m, play, cuts, sents, hi, cutaway)
+    end, at_cut, play = _end(m, play, cuts, sents, hi, cutaway)
 
     # The start.
     calls = [s for s in sents if s.end_s > play - 0.5 and s.start_s < play + 3.0]
