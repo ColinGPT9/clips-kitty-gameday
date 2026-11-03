@@ -171,7 +171,9 @@ def _approve(db, review: dict, command: dict, now) -> Outcome:
         store.move(db, review["id"], states.FAILED, actor="desktop", detail="nothing could be queued", error=why)
         return Outcome("rejected", why)
     store.move(db, review["id"], states.PUBLISH_QUEUED, actor="desktop", detail=f"{queued} upload(s) queued")
-    return Outcome("accepted", f"{queued} clip(s) queued for {', '.join(platforms)}.", queued=queued)
+    # No full stop: the relay's page adds its own after the reason.
+    where = " and ".join(ra_settings.PLATFORM_LABELS.get(p, p) for p in platforms)
+    return Outcome("accepted", f"{queued} clip{'s' if queued != 1 else ''} queued for {where}", queued=queued)
 
 
 def queue_publishes(db, review: dict, decision: dict, *, only: dict | None = None) -> int:

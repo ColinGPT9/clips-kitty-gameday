@@ -346,6 +346,8 @@ def test_an_approval_queues_one_publish_per_clip(db, on):
     ids = [c["clip_id"] for c in review["clips"][:2]]
     out = commands.handle(db, approve_command(review, clips=ids, platforms=["instagram", "facebook"]), secret=SECRET)
     assert out.outcome == "accepted" and out.queued == 2
+    # The relay's page says "Your PC accepted it: <reason>." and adds the full stop itself.
+    assert out.reason == "2 clips queued for Instagram Reels and Facebook Page Reels"
     review = store.get_review(db, review["id"])
     assert review["state"] == states.PUBLISH_QUEUED
     assert review["decision"]["platforms"] == ["instagram", "facebook"]
