@@ -908,7 +908,7 @@
     renderOffersHead();
     const reviews = S.reviews || [];
     show('offers-empty', S.reviews !== null && !reviews.length);
-    keyed($('offers'), reviews, (r) => r.id, (r) => JSON.stringify(r), buildOffer);
+    keyed($('offers-list'), reviews, (r) => r.id, (r) => JSON.stringify(r), buildOffer);
   }
 
   function buildOffer(review) {
@@ -1560,7 +1560,7 @@
       $('events').replaceChildren();
       renderEvents();
     });
-    $('offers').addEventListener('click', (e) => {
+    $('offers-list').addEventListener('click', (e) => {
       const button = e.target.closest('button[data-act="offer"]');
       if (button) offerAction(button);
     });
