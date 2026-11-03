@@ -168,6 +168,20 @@ def test_a_replay_wipe_after_the_play_ends_the_clip_where_it_begins():
     assert end == before(103.1)
 
 
+def test_a_clip_never_spans_the_live_game_and_a_replay():
+    # A logo wipe 114.2-115.5 into a replay, and another 124.3-125.8 out of it. Muse Spark put the
+    # play at 124, in the replay: the clip is the replay alone, after the wipe in, before the wipe out.
+    wipes = [114.2, 114.83, 115.5, 124.3, 124.93, 125.77]
+    m = moment(play=124.0, start=110.3, end=126.0, category="big_moment")
+    sents = [s(118.3, 126.0, "He's in his gather as he's fouled and the floater rolls in")]
+    start, end = moments.refine(m, cuts=wipes, sents=sents, duration_s=400.0, options=OPTS)
+    assert (start, end) == (115.5, before(124.3))
+    # Live play after the replay of the one before: the lead-up never reaches back into that replay.
+    start, _ = moments.refine(moment(start=85.0), cuts=[88.0, 88.6, 89.4], sents=[s(100.5, 101.5, "Three!")],
+                              duration_s=400.0, options=OPTS)
+    assert start == 89.4
+
+
 def test_a_play_time_inside_the_cutaway_after_the_play_ends_where_the_cutaway_began():
     # Muse Spark put the play at 103, but 101.8-105 is a close-up without the ball: the call was heard over it.
     def cutaway(a, b):

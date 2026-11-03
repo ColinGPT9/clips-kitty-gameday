@@ -39,6 +39,7 @@ MAX_SPEECH_AFTER_S = 15.0
 CUT_GUARD_S = 0.04  # an end this far before its cut leaves out every frame of the next shot
 SHORTEST_S = 6.0  # an end at an early cut may make a clip shorter than the minimum, but not than this
 FLASH_S = 2.0  # an opening shot shorter than this, before a cut, is skipped
+TRANSITION_S = 0.8  # a "shot" shorter than this between two cuts is a wipe or a dissolve
 LATE_PLAY_S = 2.5  # a play time this far into a cutaway is the call heard over it: the play came before
 EVIDENCE_LAG_S = 2.0  # a play time this long after its call began may be a late guess
 
@@ -460,23 +461,24 @@ def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: f
 
     end, at_cut, play = _end(m, play, cuts, sents, hi, cutaway)
 
-    # The start.
+    # The start, never before a wipe into the play's scene (a replay, or live play after one).
+    earliest = _after_transitions(cuts, play, lo)
     calls = [s for s in sents if s.end_s > play - 0.5 and s.start_s < play + 3.0]
     call = calls[0].start_s if calls else play
     start = min(m.start_s, call - LEAD_BEFORE_CALL_S, play - LEAD_BEFORE_CALL_S)
-    start = max(start, play - MAX_LEAD_S, lo)
+    start = max(start, play - MAX_LEAD_S, earliest)
     if end - start > options.max_clip_s:
         start = end - options.max_clip_s  # the ending matters most: lose lead-up
-    start = _open_cleanly(start, play, cuts, cutaway, lo)
+    start = _open_cleanly(start, play, cuts, cutaway, earliest)
     if end - start < options.min_clip_s:
         # Short: more lead-up, still opening cleanly. Never more end: a cut that comes early
         # leaves the clip shorter than the minimum.
-        start = min(start, _open_cleanly(max(lo, end - options.min_clip_s), play, cuts, cutaway, lo))
+        start = min(start, _open_cleanly(max(earliest, end - options.min_clip_s), play, cuts, cutaway, earliest))
     shortest = min(SHORTEST_S, options.min_clip_s)
     if end - start < shortest - 1.0:
         # Still well under 6 s: a cutaway in the lead-up is better than running past the cut that ends
         # the play, or than a clip too short to watch.
-        start = _reach_back(start, max(lo, end - shortest), cuts, lo)
+        start = _reach_back(start, max(earliest, end - shortest), cuts, earliest)
     if end - start < options.min_clip_s and not at_cut:
         # One court shot, pinned at the start of the video: the end may grow, but not into the next shot.
         nxt = next((c for c in cuts if c > end + 0.05), None)
@@ -484,6 +486,17 @@ def refine(m: Moment, *, cuts: list[float], sents: list[Sentence], duration_s: f
     if end - start > options.max_clip_s:
         end = start + options.max_clip_s
     return round(start, 2), round(end, 2)
+
+
+def _after_transitions(cuts: list[float], play: float, lo: float) -> float:
+    """The earliest a clip may start: after the last transition before the play. Two
+    cuts this close together are a wipe (into a replay or out of one), not a scene, so
+    a clip never spans the live game and a replay."""
+    earliest = lo
+    for a, b in zip(cuts, cuts[1:], strict=False):
+        if b - a < TRANSITION_S and b <= play:
+            earliest = max(earliest, b)
+    return earliest
 
 
 def _reach_back(start: float, want: float, cuts: list[float], lo: float) -> float:
