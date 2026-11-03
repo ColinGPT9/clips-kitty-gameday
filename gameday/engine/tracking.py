@@ -62,6 +62,7 @@ class Track:
     y: np.ndarray
     found: np.ndarray  # bool
     static_ids: set[int]
+    size: np.ndarray | None = None  # the picked box's width as a share of the frame width (NaN where not seen)
 
 
 @dataclass
@@ -143,6 +144,7 @@ def pick_ball(seg: Segmentation, f: BallFilter = DEFAULT_FILTER) -> Track:
             per_frame[b.frame].append(b)
     x = np.full(n, np.nan)
     y = np.full(n, np.nan)
+    size = np.full(n, np.nan)
     last: tuple[float, float, int, int] | None = None  # x, y, frame, id
     for k in range(n):
         candidates = per_frame.get(k)
@@ -156,8 +158,9 @@ def pick_ball(seg: Segmentation, f: BallFilter = DEFAULT_FILTER) -> Track:
             if speed > f.max_jump and (best.confidence or 0.5) < 0.6:
                 continue  # an unlikely jump from a weak box: wait for the next frame
         x[k], y[k] = cx, cy
+        size[k] = (best.right - best.left) / seg.width
         last = (cx, cy, k, best.object_id)
-    return Track(x=x, y=y, found=~np.isnan(x), static_ids=still)
+    return Track(x=x, y=y, found=~np.isnan(x), static_ids=still, size=size)
 
 
 def players_x(seg: Segmentation | None, n: int, *, min_height: float = 0.06,
@@ -397,3 +400,13 @@ def ball_share(track: Track, fps: float, start_s: float, end_s: float) -> float 
     if b - a < 5:
         return None
     return float(np.count_nonzero(track.found[a:b])) / (b - a)
+
+
+def ball_size(track: Track, fps: float, start_s: float, end_s: float) -> float | None:
+    """The ball's usual width (the median, a share of the frame width) over the frames in [start_s, end_s)
+    where it was seen; None if it was seen on too few of them."""
+    if track.size is None:
+        return None
+    a, b = max(0, int(math.ceil(start_s * fps))), min(len(track.size), int(math.floor(end_s * fps)))
+    seen = track.size[a:b][~np.isnan(track.size[a:b])] if b > a else np.empty(0)
+    return float(np.median(seen)) if len(seen) >= 5 else None

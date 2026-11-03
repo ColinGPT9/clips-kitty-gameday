@@ -15,6 +15,9 @@ to the owner's rules:
   the play (2.5 s after a block or a steal). Nothing of the next scene
   shows at the end. A cut that comes early may leave a clip shorter than the
   minimum length, but not under 6 s.
+
+Which shots are cutaways (no ball, or the ball big in a close-up) only SAM
+3.1 can tell; without it, only the cuts are known.
 """
 
 from __future__ import annotations
@@ -383,7 +386,10 @@ def sentences(turns: list[Turn]) -> list[Sentence]:
     return out
 
 
-Cutaway = Callable[[float, float], bool]  # (shot start, shot end) -> no ball in that shot
+NO_BALL, CLOSE_UP = "no ball", "close-up"
+# (shot start, shot end) -> NO_BALL (the crowd, the bench), CLOSE_UP (the players up close, the ball in hand),
+# or "" for a shot of the game. Only SAM 3.1 can tell.
+Cutaway = Callable[[float, float], str]
 
 
 def _open_cleanly(start: float, play: float, cuts: list[float], cutaway: Cutaway | None, lo: float) -> float:
@@ -417,18 +423,27 @@ def ending_cut(play: float, cuts: list[float], cutaway: Cutaway | None, hi: floa
     """The broadcast's cut that ends the play (None when the court shot runs on), and
     when the play was.
 
-    It is the first cut after the play time, unless a cutaway (a shot without the
-    ball: a close-up, the bench) began after the play was called, or just before the
-    play time. Then the play time is a late guess, the call heard over the close-up
-    after the play: the play came just before that cutaway, and ends where it began.
-    A play called before it happened (a free throw "at the line") has no cutaway
-    between its call and its time, so it keeps its time. A play time inside a wipe
-    is late too, with or without SAM: the play ends where the wipe began."""
+    It is the first cut after the play time, unless a shot without the ball (the
+    bench, the crowd) began after the play was called, or just before the play time.
+    Then the play time is a late guess, the call heard over the cutaway after the
+    play: the play came just before that cutaway, and ends where it began. A close-up
+    with the ball in it (the players at the line after a foul) says so only when the
+    call is heard over it or the play time falls in it: one between a free throw
+    announced "at the line" and the free throw itself says nothing. A play called
+    before it happened has no cutaway between its call and its time, so it keeps its
+    time. A play time inside a wipe is late too, with or without SAM: the play ends
+    where the wipe began."""
     if cutaway is not None:
         since = play - LATE_PLAY_S if called is None else min(called, play - LATE_PLAY_S)
+        heard = play if called is None else called
         for i, c in enumerate(cuts):
-            if since < c <= play + 0.05 and cutaway(c, cuts[i + 1] if i + 1 < len(cuts) else hi):
-                log.info("play time %.2f is past the cutaway that began at %.2f: the play ends there", play, c)
+            if not since < c <= play + 0.05:
+                continue
+            nxt = cuts[i + 1] if i + 1 < len(cuts) else hi
+            kind = cutaway(c, nxt)
+            if kind and (kind != CLOSE_UP or c <= heard + 0.05 or play < nxt):
+                log.info("play time %.2f is past the %s that began at %.2f: the play ends there", play,
+                         "close-up" if kind == CLOSE_UP else "cutaway", c)
                 return c, min(play, c - 1.0)
     after = next((c for c in cuts if c > play + 0.05), None)
     began = max((c for c in cuts if c <= play + 0.05), default=None)

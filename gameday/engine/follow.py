@@ -20,6 +20,10 @@ PART_BYTES = 5_500_000  # a proxy bigger than this goes to SAM in parts
 PART_S = 20.0
 NEEDS_PLAYERS = 0.6  # below this ball coverage, SAM is also asked for the players
 CUTAWAY_SHARE = 0.15  # a shot with the ball in fewer of its frames is a cutaway
+# So is one where the ball is usually this wide (a share of the frame's width): a close-up of the players. In the
+# HD demo game the ball was 1 to 3% of the width from the wide camera, 4.5% from the one under the basket and in
+# replays, and 6 to 13% in close-ups of the players.
+CLOSE_UP_BALL = 0.06
 # Where the ball is missing, the window follows the players. "basketball player" finds the players on the
 # court and not the crowd ("person" found both, and took six times as long); 3 frames a second is plenty.
 PLAYERS_NOUN = "basketball player"
@@ -54,14 +58,33 @@ def proxy_window(m: moments.Moment, duration_s: float, options: PipelineOptions)
     return round(max(0.0, start - 6.0), 3), round(min(duration_s, end + 7.0), 3)
 
 
-def _cuts_near(work: ClipWork, track: tracking.Track | None, fps: float) -> str:
-    """The cuts around a clip, each with SAM's ball share in the shot it starts, for the log."""
+def cutaways(track: tracking.Track, fps: float, window_start: float) -> moments.Cutaway:
+    """What kind of cutaway a shot (source seconds) is, by SAM's ball: missing from most of its frames
+    (the crowd, the bench), or big in them (a close-up of the players, even with the ball in hand)."""
+    def cutaway(a: float, b: float) -> str:
+        share = tracking.ball_share(track, fps, a - window_start, b - window_start)
+        if share is not None and share < CUTAWAY_SHARE:
+            return moments.NO_BALL
+        size = tracking.ball_size(track, fps, a - window_start, b - window_start)
+        return moments.CLOSE_UP if size is not None and size >= CLOSE_UP_BALL else ""
+
+    return cutaway
+
+
+def _shots(work: ClipWork, track: tracking.Track | None, fps: float) -> str:
+    """Every shot of the window by its first frame (the window's start, then each cut), with SAM's ball
+    share and the ball's usual width in it, for the log: enough to replay the rules offline."""
+    ws, we = work.window
+    edges = [ws, *(c for c in work.cuts if ws < c < we), we]
     parts = []
-    for c in (c for c in work.cuts if work.start_s - 2.0 <= c <= work.end_s + 8.0):
-        nxt = next((d for d in work.cuts if d > c + 0.05), work.window[1])
-        share = None if track is None else tracking.ball_share(track, fps, work.to_proxy(c), work.to_proxy(nxt))
-        parts.append(f"{c:.2f}" + ("" if share is None else f" (ball {share:.0%})"))
-    return ", ".join(parts) or "none"
+    for a, b in zip(edges, edges[1:], strict=False):
+        about = []
+        if track is not None:
+            share = tracking.ball_share(track, fps, a - ws, b - ws)
+            size = tracking.ball_size(track, fps, a - ws, b - ws)
+            about = ([] if share is None else [f"ball {share:.0%}"]) + ([] if size is None else [f"{size:.1%} wide"])
+        parts.append(f"{a:.2f}" + (f" ({', '.join(about)})" if about else ""))
+    return ", ".join(parts)
 
 
 def segment(meta: MetaAPI, proxy: Path, facts: VideoFacts, noun: str, *, job_id: int | None,
@@ -156,16 +179,13 @@ def track_clip(work: ClipWork, *, source: Path, source_size: tuple[int, int], du
     track = tracking.pick_ball(work.ball) if work.ball is not None and work.facts is not None else None
     fps = (work.facts.fps if work.facts is not None else 0.0) or options.sam_fps
     if track is not None and len(track.found) and float(track.found.mean()) >= 0.2:
-        # SAM sees the ball in this footage, so a shot without it means something.
-        def cutaway(a: float, b: float) -> bool:
-            share = tracking.ball_share(track, fps, a - ws, b - ws)
-            return share is not None and share < CUTAWAY_SHARE
-
+        # SAM sees the ball in this footage, so a shot without it, or with it close up, means something.
+        cutaway = cutaways(track, fps, ws)
     work.start_s, work.end_s = moments.refine(work.moment, cuts=work.cuts, sents=sents, duration_s=duration_s,
                                               options=options, window=(ws, we), cutaway=cutaway)
     at_cut = any(abs(c - moments.CUT_GUARD_S - work.end_s) < 0.011 for c in work.cuts)
-    log.info("%s: play at %.2f, clip %.2f-%.2f %s; cuts near it: %s", name, work.moment.play_s, work.start_s,
-             work.end_s, "ending at a cut" if at_cut else "ending on the talk", _cuts_near(work, track, fps))
+    log.info("%s: play at %.2f, clip %.2f-%.2f %s; shots from %s", name, work.moment.play_s, work.start_s,
+             work.end_s, "ending at a cut" if at_cut else "ending on the talk", _shots(work, track, fps))
 
     # The window's path.
     if work.facts is None:

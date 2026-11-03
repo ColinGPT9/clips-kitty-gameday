@@ -189,7 +189,7 @@ def test_a_clip_never_spans_the_live_game_and_a_replay():
 def test_a_play_time_inside_the_cutaway_after_the_play_ends_where_the_cutaway_began():
     # Muse Spark put the play at 103, but 101.8-105 is a close-up without the ball: the call was heard over it.
     def cutaway(a, b):
-        return (a, b) == (101.8, 105.0)
+        return moments.NO_BALL if (a, b) == (101.8, 105.0) else ""
 
     sents = [s(102.5, 104.0, "What a finish!")]
     m = moment(play=103.0, category="dunks")
@@ -198,8 +198,39 @@ def test_a_play_time_inside_the_cutaway_after_the_play_ends_where_the_cutaway_be
     _, end = moments.refine(m, cuts=[101.8, 105.0], sents=sents, duration_s=400.0, options=OPTS)
     assert end == before(105.0)  # without SAM there's no telling: the first cut after the play
     _, end = moments.refine(m, cuts=[101.8, 105.0], sents=sents, duration_s=400.0, options=OPTS,
-                            cutaway=lambda a, b: False)
+                            cutaway=lambda a, b: "")
     assert end == before(105.0)  # the play's own court shot
+
+
+def test_a_close_up_with_the_ball_ends_the_play_when_the_call_is_heard_over_it_or_the_play_time_is_in_it():
+    # A layup at 98 seen from under the basket (95-101.8), then the players at the free-throw line up close,
+    # the ball in hand (101.8-109.6). Muse Spark put the play at 103.3, quoting words begun at 102.0.
+    cuts = [95.0, 101.8, 109.6, 113.0]
+
+    def close_up(a, b):
+        return moments.CLOSE_UP if a == 101.8 else ""
+
+    m = moment(play=103.3, start=93.0, category="big_moment")
+    m.called_s = 102.0
+    sents = [s(99.0, 100.2, "And a foul."), s(102.0, 105.2, "He said meet me at the rim.")]
+    _, end = moments.refine(m, cuts=cuts, sents=sents, duration_s=400.0, options=OPTS, cutaway=close_up)
+    assert end == before(101.8)  # the call is heard over the close-up
+    m.called_s = 99.0
+    _, end = moments.refine(m, cuts=cuts, sents=sents, duration_s=400.0, options=OPTS, cutaway=close_up)
+    assert end == before(101.8)  # the call came first, but the play time is in the close-up
+    # A free throw announced at the line at 99, the shooter up close, then the free throw from the wide camera
+    # at 111: the close-up in between says nothing about the play time, which stands.
+    free_throw = moment(play=111.0, start=93.0, category="clutch")
+    free_throw.called_s = 99.0
+    announced = [s(99.0, 101.0, "Clutch at the free throw line.")]
+    _, end = moments.refine(free_throw, cuts=cuts, sents=announced, duration_s=400.0, options=OPTS,
+                            cutaway=close_up)
+    assert end == before(113.0)
+    # A shot without the ball after the call still ends the play there: Muse Spark's late guesses (13 s
+    # late, once, in a test game) are far more common than a bench shot before a free throw.
+    _, end = moments.refine(free_throw, cuts=cuts, sents=announced, duration_s=400.0, options=OPTS,
+                            cutaway=lambda a, b: moments.NO_BALL if a == 101.8 else "")
+    assert end == before(101.8)
 
 
 def test_it_stops_before_a_new_sentence_that_starts_too_long_after_the_play():
@@ -230,12 +261,11 @@ def test_the_next_scene_never_hangs_over_the_end():
 
 
 def test_it_never_opens_on_a_cutaway_or_a_flash_of_the_shot_before():
-    def cutaway(a, b):
-        return (a, b) == (86.0, 89.0)
-
-    start, _ = moments.refine(moment(start=85.0), cuts=[86.0, 89.0], sents=[s(100.5, 101.5, "Yes!")],
-                              duration_s=400.0, options=OPTS, cutaway=cutaway)
-    assert start == 89.0
+    for kind in (moments.NO_BALL, moments.CLOSE_UP):  # the bench, or the players up close with the ball
+        start, _ = moments.refine(moment(start=85.0), cuts=[86.0, 89.0], sents=[s(100.5, 101.5, "Yes!")],
+                                  duration_s=400.0, options=OPTS,
+                                  cutaway=lambda a, b, kind=kind: kind if (a, b) == (86.0, 89.0) else "")
+        assert start == 89.0
     start, _ = moments.refine(moment(start=85.0), cuts=[86.0, 89.0], sents=[s(100.5, 101.5, "Yes!")],
                               duration_s=400.0, options=OPTS)
     assert start == 86.0  # without SAM it only skips the flash
@@ -247,7 +277,7 @@ def test_it_never_opens_on_a_cutaway_or_a_flash_of_the_shot_before():
 def test_a_cut_that_comes_early_leaves_the_clip_short_but_not_too_short():
     # The lead-up shot 88-97 is a crowd cutaway, and the cut at 102.8 ends the play (then a replay).
     def crowd(a, b):
-        return (a, b) == (88.0, 97.0)
+        return moments.NO_BALL if (a, b) == (88.0, 97.0) else ""
 
     start, end = moments.refine(moment(category="blocks"), cuts=[88.0, 97.0, 102.8, 108.0],
                                 sents=[s(100.5, 102.0, "Blocked!")], duration_s=400.0, options=OPTS, cutaway=crowd)
@@ -289,10 +319,10 @@ def test_a_play_time_well_after_its_call_is_checked_against_the_shots_in_between
     sents, cuts = moments.sentences(turns), [called + 1.2, called + 5.0, 103.0]
     # A close-up without the ball began after the call: the play time was a late guess.
     start, end = moments.refine(m, cuts=cuts, sents=sents, duration_s=400.0, options=OPTS,
-                                cutaway=lambda a, b: (a, b) == (cuts[0], cuts[1]))
+                                cutaway=lambda a, b: moments.NO_BALL if (a, b) == (cuts[0], cuts[1]) else "")
     assert end == before(cuts[0]) and start < called - moments.LEAD_BEFORE_CALL_S
     # Every shot in between has the ball (a free throw announced at the line): the play time stands.
-    _, end = moments.refine(m, cuts=cuts, sents=sents, duration_s=400.0, options=OPTS, cutaway=lambda a, b: False)
+    _, end = moments.refine(m, cuts=cuts, sents=sents, duration_s=400.0, options=OPTS, cutaway=lambda a, b: "")
     assert end == before(103.0)
     unknown = three("words nobody said here")
     moments.note_the_calls([unknown], turns)
