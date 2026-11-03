@@ -41,8 +41,9 @@ by hand takes too long.
 2. Muse Voice transcribes the commentary. Muse Spark picks the plays and
    writes their titles and captions. SAM 3.1 finds the ball, and ffmpeg cuts
    9:16 clips whose crop follows it.
-3. When the game is done, the clips are offered on your phone, through Muse,
-   WhatsApp, or both.
+3. When the game is done, the clips are offered on your phone. Ask Muse
+   what's ready (it doesn't message you first), or look at the dashboard,
+   and Muse hands you the approval link.
 4. On the approval page you watch them, tick the ones you want and where
    they go, confirm, and enter your PIN. Only then are they posted, as
    Instagram Reels and Facebook Page Reels, through Meta's Graph API.
@@ -61,7 +62,6 @@ got posted, and the spending against a budget.
 | **The Muse connector** | A custom connector for Muse, Meta's agent app, on the owner's relay: an MCP server with six tools, plus the same tools as HTTPS routes with an OpenAPI description. Muse says what's ready, hands over the approval link, says what got posted, and puts an offer aside or cancels it. No tool approves or posts. Not yet tried in the Muse app itself |
 | **Graph API Reels** | Instagram Reels (resumable upload, container status, publish, permalink) and Facebook Page Reels (start, upload, finish, status, permalink), made by the relay only for what was approved |
 | **Facebook Login for Business** | Connects the Page and its Instagram account. The tokens stay on the relay |
-| **WhatsApp Business Cloud API** (optional) | Messages with the approval link, quick replies, pairing a number with a one-time code, STOP and START |
 
 Only Meta's models are called at runtime. `tests/test_meta_only.py` fails on
 any other AI package, import or model host, and if the app's model list is

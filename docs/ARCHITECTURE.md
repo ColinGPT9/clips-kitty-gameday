@@ -18,7 +18,6 @@ flowchart TD
     end
     subgraph PH["On your phone"]
         MU["Muse<br/>what's ready · the link · what got posted"]
-        WA["WhatsApp<br/>a message with the link"]
         AP["The approval page<br/>clips · places · confirm · PIN"]
     end
     G["Graph API"]
@@ -27,9 +26,7 @@ flowchart TD
     F --> V --> S --> M --> R --> O
     O -->|signed, outbound only| Q
     Q --> MU
-    Q --> WA
     MU -->|the link| AP
-    WA -->|the link| AP
     AP -->|approve, with the PIN| Q
     Q -.->|the app collects the decision| C
     C -->|through the relay| G
@@ -38,12 +35,12 @@ flowchart TD
     classDef model fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
     classDef metaapp fill:#E7F0FF,stroke:#0866FF,color:#0B1F44
     class V,S,M model
-    class MU,WA,G,IG,FB metaapp
+    class MU,G,IG,FB metaapp
 ```
 
 **Solid blue: Meta's models** (Muse Voice, Muse Spark, SAM 3.1), the only AI
-this app calls. **Light blue: Meta's apps and APIs** (Muse, WhatsApp, the Graph
-API, Instagram, Facebook).
+this app calls. **Light blue: Meta's apps and APIs** (Muse, the Graph API,
+Instagram, Facebook).
 
 ## The parts
 
@@ -63,8 +60,8 @@ API, Instagram, Facebook).
   KV for the clips' preview videos. The owner deploys it once
   ([RELAY_SETUP.md](RELAY_SETUP.md)).
 - **Meta**: the Meta Model API at `https://api.meta.ai/v1` for the three
-  models; the Graph API for Reels; Facebook Login; WhatsApp's Cloud API
-  (optional); and the Muse app, through a custom connector on the relay
+  models; the Graph API for Reels; Facebook Login; and the Muse app,
+  through a custom connector on the relay
   ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)).
 
 ## One game, step by step
@@ -97,8 +94,9 @@ Muse Spark, SAM 3.1, 9:16 and Captions.
    and the crop window (**How it follows the ball** in the dashboard).
 6. **Captions.** Muse Spark writes each clip's caption for posting.
 7. **The offer.** With **Let me approve publishing from my phone** on, the
-   app sends the offer to the relay, signed. The relay keeps it for Muse,
-   and sends a WhatsApp message when a number is paired.
+   app sends the offer to the relay, signed. The relay keeps it for Muse.
+   Muse doesn't message the owner: they ask it what's ready (or set a
+   reminder in Muse), and the dashboard shows the offer too.
 8. **The phone decides.** On the approval page, the owner watches the clips,
    ticks the ones to post and where, confirms, and enters the PIN. Muse can
    hand over the link, but can't approve.
@@ -127,7 +125,7 @@ READY_FOR_REVIEW -> NOTIFICATION_PENDING -> NOTIFICATION_SENT -> AWAITING_APPROV
 Only these moves are allowed, and each is written to the audit log. From the
 dashboard, an offer can be cancelled (before an upload starts), retried
 (only what failed, under the same approval), asked again (a new offer for an
-expired or cancelled one) or sent again (after WhatsApp couldn't deliver it).
+expired or cancelled one) or sent again (after the relay refused it).
 
 ## Data
 
@@ -137,21 +135,20 @@ All of it is under `DATA_DIR`: `gameday.db` (SQLite), `uploads/`,
 
 ## On the relay
 
-`meta-relay/worker.js` (the routes, pairing, offers, the approval page's
-actions, the PIN lockouts, Muse keys, commands, previews, the Graph step
-gate, the cron), `lib/whatsapp.js` (Cloud API sends, the templates, error
-meanings), `lib/meta.js` (Facebook Login, the Graph steps, uploads),
+`meta-relay/worker.js` (the routes, offers, the approval page's actions,
+the PIN lockouts, Muse keys, commands, previews, the Graph step gate, the
+cron), `lib/meta.js` (Facebook Login, the Graph steps, uploads),
 `lib/page.js` (the approval and status pages: server-rendered HTML, no
 JavaScript, a strict CSP), `lib/crypto.js` (HMAC, AES-GCM sealing, PBKDF2
 PIN hashing), `lib/muse.js` (the Muse connector), `lib/db.js` (database
 helpers and the audit log) and `schema.sql` (D1). A cron every 10 minutes
-expires offers and sends reminders.
+expires offers and clears out old records.
 
 ## Why a relay
 
-- Meta's webhooks, the Facebook sign-in redirect and the phone's approval
-  page need public addresses that work without the owner's password. The app
-  keeps every one of its own routes behind that password.
+- The Facebook sign-in redirect, the Muse connector and the phone's
+  approval page need public addresses that work without the owner's
+  password. The app keeps every one of its own routes behind that password.
 - Meta's app secret and the account tokens stay on a small server the owner
   controls, apart from the app and its data.
 - An approval made while the app is off or busy waits on the relay, and the

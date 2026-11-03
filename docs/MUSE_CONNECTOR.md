@@ -16,9 +16,9 @@ page (`/a/<link>` on your relay), where you tick the clips and the places to
 post and enter your own PIN. Muse can hand you that link. No tool takes or
 shows the PIN, and the connector tells Muse never to ask for it or type it.
 
-Muse works with or without WhatsApp. With Muse connected and no WhatsApp
-number paired, offers wait on the relay for Muse to find, and no message is
-sent anywhere.
+Muse doesn't message you when clips are ready. Offers wait on the relay for
+Muse to find: ask it what's ready (or set yourself a reminder in Muse), or
+look at the dashboard. No message is sent anywhere.
 
 ## How it works
 
@@ -37,9 +37,8 @@ against its own record of the offer, and publishes.
 
 ## Set it up
 
-1. **Deploy the relay** ([RELAY_SETUP.md](RELAY_SETUP.md)). For Muse alone,
-   the WhatsApp secrets can be left out. Publishing still needs
-   `META_APP_ID` and `META_APP_SECRET`.
+1. **Deploy the relay** ([RELAY_SETUP.md](RELAY_SETUP.md)). Publishing
+   needs `META_APP_ID` and `META_APP_SECRET`.
 2. **Connect the app** to it: **Setup → Relay** in the dashboard, with the
    relay's address and enrolment key.
 3. **Make the key**: **Setup → Muse → Make a Muse key**. The key (`ckm_...`)
@@ -58,8 +57,8 @@ against its own record of the offer, and publishes.
    describes the same tools as plain HTTPS routes with the same key. A
    plain-text guide is at `https://<your relay>/muse`.
 6. **Set an approval PIN and connect your accounts** in **Setup**, then
-   switch on **Let me approve publishing from my phone**. With Muse
-   connected, that doesn't need a WhatsApp number; it still needs the PIN.
+   switch on **Let me approve publishing from my phone**. It needs Muse
+   connected and the PIN.
 
 Try it: "Clips Kitty, what highlights are ready?"
 
@@ -72,12 +71,12 @@ Every tool works only for the app whose key it is.
 | `list_ready_highlights` | No | Offers waiting for a decision: the title, what was found, each clip (title, play, length, where it is already posted), the places it can post, when the link expires, any reminder, and when the app last checked in. Optional: `match`, `since`, `limit` (1 to 20), `include_captions`. Never a link token or a thumbnail. |
 | `get_approval_link` | No | The approval link for one offer (`approval_id`, `match` to pick by name, or the one open offer). When none or several match, it gives the choices instead, so Muse asks which one. Each link handed out is logged as Muse's. |
 | `list_recent_posts` | No | Offers approved in the last 1 to 7 days and what became of each clip, with only the links Instagram and Facebook returned. |
-| `remind_me_later` | The offer | What the page's **Remind me later** does (15 to 1440 minutes, or your usual wait). With WhatsApp set up, the link is sent again then. Without it, nothing is sent: Muse gets the time back (`remind_at`) and is asked to remind you itself, which isn't confirmed to work yet (below). |
+| `remind_me_later` | The offer | What the page's **Remind me later** does (15 to 1440 minutes, or your usual wait). Nothing is sent then: Muse gets the time back (`remind_at`) and is asked to remind you itself, which isn't confirmed to work yet (below). |
 | `cancel_offer` | The offer | What the page's **Cancel** does. It can't be undone, so it needs `confirm: true`, which Muse should only send after you say so. |
-| `relay_status` | No | When the app last checked in, whether a PIN is set, whether wrong PINs have blocked approving from the phone, the WhatsApp number's last four digits, the connected accounts and how many offers are open. |
+| `relay_status` | No | When the app last checked in, whether a PIN is set, whether wrong PINs have blocked approving from the phone, the connected accounts and how many offers are open. |
 
-No tool approves, publishes, takes a PIN, pairs a number, connects an
-account or changes a setting.
+No tool approves, publishes, takes a PIN, connects an account or changes
+a setting.
 
 The same tools over plain HTTPS (same key, same answers):
 
@@ -160,9 +159,9 @@ the Muse app itself:
 - **The `Origin` header.** A request that carries an `Origin` other than the
   relay's own is refused, so web pages can't call it. Muse's servers are not
   expected to send one.
-- **Whether Muse can remind you later by itself.** Without a WhatsApp number,
-  nothing sends a reminder, and the relay can't reach Muse first: it only
-  answers Muse's calls. Until that is tried, the approval page says the app
+- **Whether Muse can remind you later by itself.** Nothing sends a
+  reminder, and the relay can't reach Muse first: it only answers Muse's
+  calls. Until that is tried, the approval page says the app
   will not remind you, and to ask Muse for the link.
 
 ## Where it is

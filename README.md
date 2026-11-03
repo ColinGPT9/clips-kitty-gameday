@@ -40,8 +40,8 @@ ffmpeg cuts and renders the clips. It is a tool, not a model.
   crop moves with it. Each clip says how much of it followed the ball, and
   **How it follows the ball** shows SAM's box and the crop on a frame.
 - **It asks before posting.** When a game is done, the clips are offered on
-  your phone. Muse or WhatsApp hands you the link, and the approval page asks
-  for your PIN. Only the clips and places you tick go up, as Instagram Reels
+  your phone. Ask Muse what's ready and it hands you the link, and the
+  approval page asks for your PIN. Only the clips and places you tick go up, as Instagram Reels
   and Facebook Page Reels.
 
 Options: Basketball or Talk mode, clips per game (1 to 12), "Teams or
@@ -65,7 +65,6 @@ flowchart TD
     end
     subgraph PH["On your phone"]
         MU["Muse<br/>what's ready · the link · what got posted"]
-        WA["WhatsApp<br/>a message with the link"]
         AP["The approval page<br/>clips · places · confirm · PIN"]
     end
     G["Graph API"]
@@ -74,9 +73,7 @@ flowchart TD
     F --> V --> S --> M --> R --> O
     O -->|signed, outbound only| Q
     Q --> MU
-    Q --> WA
     MU -->|the link| AP
-    WA -->|the link| AP
     AP -->|approve, with the PIN| Q
     Q -.->|the app collects the decision| C
     C -->|through the relay| G
@@ -85,20 +82,19 @@ flowchart TD
     classDef model fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
     classDef metaapp fill:#E7F0FF,stroke:#0866FF,color:#0B1F44
     class V,S,M model
-    class MU,WA,G,IG,FB metaapp
+    class MU,G,IG,FB metaapp
 ```
 
 **Solid blue: Meta's models** (Muse Voice, Muse Spark, SAM 3.1), the only AI
-this app calls. **Light blue: Meta's apps and APIs** (Muse, WhatsApp, the Graph
-API, Instagram, Facebook).
+this app calls. **Light blue: Meta's apps and APIs** (Muse, the Graph API,
+Instagram, Facebook).
 
 - **The app** (`gameday/`) is one Python process: the dashboard (plain HTML,
   CSS and JavaScript), the HTTP API in [docs/API.md](docs/API.md), a job
   worker and a folder watcher, with SQLite in one data folder.
 - **The relay** (`meta-relay/`) is a small Cloudflare Worker you deploy for
   yourself. It holds your Instagram and Facebook sign-in, serves the approval
-  page, hosts the Muse connector and sends the WhatsApp messages. The app
-  only ever calls out to it.
+  page and hosts the Muse connector. The app only ever calls out to it.
 - Every Meta call checks the budget first and is logged with its estimated
   cost. With no key, or when a call fails, a run still finishes on simple
   fallbacks (loudness picks, a centre crop) and says so.
@@ -141,14 +137,14 @@ It runs as one process with one data folder, behind HTTPS.
 2. Set your approval PIN. Enter your PIN yourself. Never give it to an
    assistant.
 3. Connect Facebook. It brings the Instagram account linked to your Page.
-4. Connect Muse ([docs/MUSE_CONNECTOR.md](docs/MUSE_CONNECTOR.md)), pair
-   WhatsApp, or both.
+4. Connect Muse ([docs/MUSE_CONNECTOR.md](docs/MUSE_CONNECTOR.md)).
 5. Switch on **Let me approve publishing from my phone**.
 
-When a game is done, ask Muse "What highlights are ready?", or open the
-link WhatsApp sends. On the approval page, watch the clips, tick the ones you
-want and where they go, confirm, and enter your PIN. Muse can hand you the
-link, but it can't approve or post anything. What protects each step:
+Muse doesn't message you when a game is done: ask it "What highlights are
+ready?" (or set yourself a reminder in Muse), or look at the dashboard. On
+the approval page, watch the clips, tick the ones you want and where they
+go, confirm, and enter your PIN. Muse can hand you the link, but it can't
+approve or post anything. What protects each step:
 [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Costs
@@ -171,9 +167,7 @@ shows the running total against your budget.
 - **Posting adds almost nothing.** Reels go to Instagram and Facebook
   through Meta's Graph API, which charges no fee. Muse Spark's captions
   for an offer cost under a cent: $0.004 for a one-clip offer, measured.
-- WhatsApp, if you use it: about $0.0034 per delivered message template in
-  North America at the time of writing. Replies within 24 hours of your last
-  message are free. The relay fits in Cloudflare's free plan for one owner.
+- The relay fits in Cloudflare's free plan for one owner.
 
 ## Tests
 
@@ -198,7 +192,7 @@ python scripts/provenance_check.py --reference path/to/clips-studio
 Runs on real games, with measured numbers, go in
 [docs/TEST_LOG.md](docs/TEST_LOG.md).
 
-Meta, Muse, SAM, Instagram, Facebook and WhatsApp are Meta's trademarks.
+Meta, Muse, SAM, Instagram and Facebook are Meta's trademarks.
 This project is not made or endorsed by Meta.
 
 ## License
