@@ -253,6 +253,24 @@ def test_a_cut_that_comes_early_leaves_the_clip_short_but_not_too_short():
     assert (start, end) == (0.0, OPTS.min_clip_s)
 
 
+def test_a_play_time_after_its_call_moves_back_to_the_call():
+    turns = [Turn(80.0, 96.0, "A long stretch about the tournament and then Sam Rivers for three got it"),
+             Turn(97.0, 104.0, "Coach called a play for the shooter.")]
+    m = Moment(start_s=85.0, end_s=104.0, play_s=101.0, category="threes", label="l", title="t", score=80.0,
+               evidence="Sam Rivers for three got it")
+    called = moments.evidence_time(m, turns)
+    text = turns[0].text
+    assert called == pytest.approx(80.0 + 16.0 * text.index("Sam") / len(text), abs=0.01)
+    moments.not_after_the_call([m], turns)
+    assert m.play_s == pytest.approx(called)
+    near = Moment(start_s=85.0, end_s=104.0, play_s=called + 1.5, category="threes", label="l", title="t",
+                  score=80.0, evidence="Sam Rivers for three got it")
+    unknown = Moment(start_s=85.0, end_s=104.0, play_s=101.0, category="threes", label="l", title="t", score=80.0,
+                     evidence="words nobody said here")
+    moments.not_after_the_call([near, unknown], turns)
+    assert near.play_s == pytest.approx(called + 1.5) and unknown.play_s == 101.0
+
+
 def test_it_starts_a_few_seconds_before_the_call():
     sents = [s(99.0, 101.0, "Here he comes, and the finish!")]
     start, end = moments.refine(moment(start=99.5), cuts=[], sents=sents, duration_s=400.0, options=OPTS)

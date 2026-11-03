@@ -37,6 +37,7 @@ CUT_GUARD_S = 0.04  # an end this far before its cut leaves out every frame of t
 SHORTEST_S = 6.0  # an end at an early cut may make a clip shorter than the minimum, but not than this
 FLASH_S = 2.0  # an opening shot shorter than this, before a cut, is skipped
 LATE_PLAY_S = 2.5  # a play time this far into a cutaway is the call heard over it: the play came before
+EVIDENCE_LAG_S = 2.0  # a play time this long after its call began is a guess past the call
 
 PLAIN_TITLES = {
     "clutch": "Clutch play", "dunks": "Huge dunk", "threes": "Big three", "blocks": "Big block",
@@ -180,8 +181,11 @@ def _number(value) -> float | None:
     return number if math.isfinite(number) else None
 
 
+_WORD = re.compile(r"[a-z0-9]+(?:['\-][a-z0-9]+)*")
+
+
 def _words(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+(?:['\-][a-z0-9]+)*", text.lower())
+    return _WORD.findall(text.lower())
 
 
 def was_said(name: str, known: str) -> bool:
@@ -255,6 +259,35 @@ def snap_to_loudness(moments: list[Moment], loud: loudness_mod.Loudness) -> None
         began = loudness_mod.onset(loud, peak)
         if m.play_s - 4.0 <= began <= m.play_s + 2.0:
             m.play_s = round(max(m.start_s, began), 2)
+
+
+def evidence_time(m: Moment, turns: list[Turn]) -> float | None:
+    """When the commentators began to say the moment's evidence, or None when it isn't
+    in the transcript. Muse Voice times turns, not words, so inside a turn the time is
+    shared out by length, as for sentences(): an estimate."""
+    words = _words(m.evidence)[:5]
+    if len(words) < 3:
+        return None
+    best = None
+    for turn in turns:
+        found = list(_WORD.finditer(turn.text.lower()))
+        said = [w.group(0) for w in found]
+        for i in range(len(said) - len(words) + 1):
+            if said[i:i + len(words)] == words:
+                share = found[i].start() / max(1, len(turn.text))
+                at = turn.start_s + max(0.0, turn.end_s - turn.start_s) * share
+                if best is None or abs(at - m.play_s) < abs(best - m.play_s):
+                    best = at
+    return None if best is None else round(best, 2)
+
+
+def not_after_the_call(moments: list[Moment], turns: list[Turn]) -> None:
+    """A play is called as it happens or just after, so a play time well after the
+    commentators began to say its evidence is a guess past the call: move it back."""
+    for m in moments:
+        called = evidence_time(m, turns)
+        if called is not None and m.play_s > called + EVIDENCE_LAG_S:
+            m.play_s = round(max(m.start_s, called), 2)
 
 
 def rough_range(m: Moment, duration_s: float, options: PipelineOptions) -> tuple[float, float]:
