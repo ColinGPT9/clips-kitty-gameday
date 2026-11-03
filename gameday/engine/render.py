@@ -211,8 +211,7 @@ def debug_image(source: Path, at_s: float, out: Path, tmp: Path, *, window_left:
                        width=4)
     caption = f"{at_s:.1f} s   red: SAM 3.1 ball   yellow: players   green: 9:16 window"
     if note:
-        caption += f"
-{note}"
+        caption += "\n" + note
     face = font(max(12, h // 32))
     box = draw.multiline_textbbox((10, 8), caption, font=face)
     draw.rectangle([box[0] - 6, box[1] - 4, box[2] + 6, box[3] + 4], fill=(0, 0, 0))
