@@ -1044,8 +1044,11 @@
     setText('relay-url-shown', set.relay_url || '');
     show('relay-form', relayKnown && !steps.relay);
     const urlInput = $('relay-url');
-    if (!urlInput.value && document.activeElement !== urlInput && set.relay_url) urlInput.value = set.relay_url;
+    const env = (S.ra && S.ra.env) || {};
+    const knownUrl = set.relay_url || env.relay_url || '';
+    if (!urlInput.value && document.activeElement !== urlInput && knownUrl) urlInput.value = knownUrl;
     $('relay-connect').disabled = !urlInput.value.trim();
+    $('relay-key').placeholder = env.enrolment_key ? 'Set where the app runs: leave it empty' : '';
 
     // 3. PIN
     paintStep('step-pin', steps.pin, noRelay ? locked : steps.pin ? 'PIN set.' : 'No PIN yet.');
