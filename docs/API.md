@@ -96,7 +96,7 @@ The dashboard sends it with `XMLHttpRequest` so it can show upload progress.
 | `GET /api/jobs?limit=20` | `[Job]`, newest first, without `clips_list` |
 | `GET /api/jobs/{id}` | `Job` with `"clips_list": [Clip]` |
 | `POST /api/jobs/{id}/cancel` | `Job` (queued or running) |
-| `POST /api/jobs/{id}/retry` | the new `Job` (failed or cancelled only) |
+| `POST /api/jobs/{id}/retry` | the new `Job` (failed or cancelled only; 409 while an earlier retry of it is queued, running or done) |
 
 `Job`:
 ```json

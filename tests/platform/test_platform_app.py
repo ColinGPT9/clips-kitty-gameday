@@ -571,7 +571,12 @@ def test_a_queued_job_can_be_cancelled_and_retried(gd):
     assert new["id"] != job_id and new["state"] == "queued" and new["video"]["id"] == gd.store.get_job(job_id)[
         "video_id"]
     assert gd.post(f"/api/jobs/{new['id']}/retry").status_code == 409  # queued: nothing to retry
+    # A second click on the old job (or another tab) never queues a second paid run.
+    again = gd.post(f"/api/jobs/{job_id}/retry")
+    assert again.status_code == 409 and again.json()["error"] == f"This job was already retried as job {new['id']}."
     assert [j["id"] for j in gd.get("/api/jobs").json()] == [new["id"], job_id]
+    gd.post(f"/api/jobs/{new['id']}/cancel")  # the retry itself stopped: the old one may go again
+    assert gd.post(f"/api/jobs/{job_id}/retry").status_code == 200
 
 
 def test_a_finished_job_lists_its_clips_with_media_urls(gd):

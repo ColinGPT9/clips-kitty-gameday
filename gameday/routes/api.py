@@ -296,6 +296,12 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
         job = job_or_404(job_id)
         if job["state"] not in ("failed", "cancelled"):
             raise HTTPException(409, "Only a failed or cancelled job can be retried.")
+        # Each retry is a whole paid run: a second click, or a second tab, never queues another.
+        again = store.conn.execute(
+            "SELECT id FROM jobs WHERE retry_of = ? AND state IN ('queued', 'running', 'done') ORDER BY id DESC",
+            (int(job_id),)).fetchone()
+        if again is not None:
+            raise HTTPException(409, f"This job was already retried as job {again['id']}.")
         video = store.get_video(job["video_id"])
         if video is None or not Path(video["path"]).is_file():
             raise HTTPException(409, "The video file is no longer there, so the job can't run again.")
