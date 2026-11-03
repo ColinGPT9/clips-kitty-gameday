@@ -229,6 +229,8 @@ def test_media_serves_a_jobs_clips_thumbnails_and_debug_images(gd, clips):
     "/media/jobs/{id}/clips/.clip_01.mp4",
     "/media/jobs/..%2F..%2F/clips/clip_01.mp4",
     "/media/jobs/x/clips/clip_01.mp4",
+    "/media/jobs/%C2%B2/clips/clip_01.mp4",  # "²" is a digit to str.isdigit, not to int()
+    "/media/jobs/%D9%A1/clips/clip_01.mp4",  # "١", an Arabic-Indic one
     "/media/jobs/{id}/clips/missing.mp4",
     "/media/jobs/{id}/clips/",
     "/media/owner-password.txt",

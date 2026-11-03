@@ -261,7 +261,7 @@ def media_url(data_dir: Path, path: str | Path | None) -> str | None:
         job_dir = clips.parent
     except (OSError, ValueError):
         return None
-    if clips.name != "clips" or job_dir.parent != jobs or not job_dir.name.isdigit():
+    if clips.name != "clips" or job_dir.parent != jobs or not (job_dir.name.isascii() and job_dir.name.isdigit()):
         return None
     if file.suffix.lower() not in (".mp4", ".jpg", ".png"):
         return None

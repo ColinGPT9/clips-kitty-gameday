@@ -44,7 +44,7 @@ def _not_found() -> HTTPException:
 def clip_file(data_dir: Path, job_id: str, name: str) -> Path:
     """The file a /media URL names, or HTTPException 404. Only a plain file
     name with an allowed suffix, directly in that job's clips folder."""
-    if not job_id.isdigit() or len(job_id) > 12:
+    if not (job_id.isascii() and job_id.isdigit()) or len(job_id) > 12:  # never "²" or "١"
         raise _not_found()
     if not _CLIP_NAME.fullmatch(name) or ".." in name:
         raise _not_found()
