@@ -26,6 +26,21 @@ def upload(app, name="game.mp4", body=None) -> int:
     return r.json()["job_id"]
 
 
+def test_connections_of_finished_pool_threads_do_not_pile_up(tmp_path):
+    """Muse Voice and SAM run in a new pool each job, and its threads use the ledger."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from gameday.store import Store
+
+    db = Store(tmp_path / "pool.db")
+    for _ in range(5):  # five jobs
+        with ThreadPoolExecutor(3) as pool:
+            list(pool.map(lambda _: db.get_flag("x", ""), range(9)))
+    db.get_flag("x", "")  # the next connection opened closes the ones left by dead threads
+    assert len(db._all) == 1
+    db.close_all()
+
+
 # ---- one job ------------------------------------------------------------------------
 
 

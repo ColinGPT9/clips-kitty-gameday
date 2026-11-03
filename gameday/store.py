@@ -307,7 +307,7 @@ class Store:
         self.budget_usd = float(budget_usd)
         self.secrets = None  # gameday.secrets.Secrets, attached by whoever opens the store
         self._local = threading.local()
-        self._all: list[sqlite3.Connection] = []
+        self._all: dict[sqlite3.Connection, threading.Thread] = {}  # each open connection, and its thread
         self._all_lock = threading.Lock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._all_lock:
@@ -329,7 +329,17 @@ class Store:
             conn.execute("PRAGMA synchronous = NORMAL")
             self._local.conn = conn
             with self._all_lock:
-                self._all.append(conn)
+                # A pool thread (Muse Voice pieces, SAM clips) opens one and ends without
+                # closing it: those are closed here, so they can't pile up job after job.
+                dead = [c for c, thread in self._all.items() if not thread.is_alive()]
+                for c in dead:
+                    del self._all[c]
+                self._all[conn] = threading.current_thread()
+            for c in dead:
+                try:
+                    c.close()
+                except sqlite3.Error:
+                    pass
         return conn
 
     def close(self) -> None:
@@ -338,13 +348,12 @@ class Store:
         if conn is not None:
             self._local.conn = None
             with self._all_lock:
-                if conn in self._all:
-                    self._all.remove(conn)
+                self._all.pop(conn, None)
             conn.close()
 
     def close_all(self) -> None:
         with self._all_lock:
-            conns, self._all = self._all, []
+            conns, self._all = list(self._all), {}
         for conn in conns:
             try:
                 conn.close()
