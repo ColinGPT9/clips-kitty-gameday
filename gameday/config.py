@@ -3,10 +3,13 @@
 Read once at start into a Config. Nothing here is a secret store: the Meta key
 and the relay's device secret live encrypted in the database (secrets.py), and
 the owner password is either GAMEDAY_PASSWORD or the generated file below.
+The judge login's password is GAMEDAY_JUDGE_PASSWORD; without it there is no
+judge login.
 """
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import secrets as _random
@@ -17,6 +20,7 @@ from pathlib import Path
 log = logging.getLogger("gameday")
 
 OWNER_USER = "owner"
+JUDGE_USER = "judge"
 PASSWORD_FILE = "owner-password.txt"
 SECRET_KEY_FILE = "secret.key"
 DB_FILE = "gameday.db"
@@ -35,12 +39,18 @@ def _number(env: Mapping[str, str], name: str, default: float, *, low: float, hi
     return value
 
 
+class StartRefused(ValueError):
+    """A setting the app won't start with. The message is a sentence for
+    people, and never holds a password."""
+
+
 @dataclass
 class Config:
     data_dir: Path = field(default_factory=lambda: Path("data"))
     host: str = "127.0.0.1"
     port: int = 8080
     password: str = ""  # GAMEDAY_PASSWORD; "" means the generated one in DATA_DIR
+    judge_password: str = ""  # GAMEDAY_JUDGE_PASSWORD; "" means there is no judge login
     secret_key: str = ""  # GAMEDAY_SECRET_KEY; "" means DATA_DIR/secret.key
     meta_api_key: str = ""  # META_API_KEY; wins over the saved key when set
     budget_usd: float = 25.0
@@ -62,11 +72,12 @@ class Config:
             return str(env.get(name, default) or default).strip()
 
         port = int(_number(env, "PORT", 8080, low=1, high=65535))
-        return cls(
+        config = cls(
             data_dir=Path(text("DATA_DIR", "data")).expanduser().resolve(),
             host=text("HOST", "127.0.0.1"),
             port=port,
             password=str(env.get("GAMEDAY_PASSWORD", "") or ""),
+            judge_password=str(env.get("GAMEDAY_JUDGE_PASSWORD", "") or ""),
             secret_key=text("GAMEDAY_SECRET_KEY"),
             meta_api_key=text("META_API_KEY"),
             budget_usd=_number(env, "META_BUDGET_USD", 25.0, low=0, high=100_000),
@@ -80,6 +91,10 @@ class Config:
             log_level=(text("LOG_LEVEL", "INFO") or "INFO").upper(),
             font=str(env.get("GAMEDAY_FONT", "") or ""),
         )
+        problem = judge_password_problem(config)
+        if problem:
+            raise StartRefused(problem)
+        return config
 
     # ---- places under DATA_DIR ------------------------------------------------
 
@@ -133,6 +148,23 @@ def weak_password(config: Config) -> str:
     if config.password and len(config.password) < MIN_PASSWORD:
         return (f"GAMEDAY_PASSWORD is shorter than {MIN_PASSWORD} characters. Set a longer one, or unset it "
                 f"to have one generated.")
+    return ""
+
+
+def judge_password_problem(config: Config, owner: str = "") -> str:
+    """Why GAMEDAY_JUDGE_PASSWORD can't be used, or "" when it is fine, or unset
+    (then there is no judge login). `owner` is the owner password, when known:
+    the judge's must differ, or a judge could sign in as the owner. Unlike the
+    owner's, a short one is refused wherever the app listens. Never says what
+    either password is."""
+    judge = config.judge_password
+    if not judge:
+        return ""
+    if len(judge) < MIN_PASSWORD:
+        return (f"GAMEDAY_JUDGE_PASSWORD is shorter than {MIN_PASSWORD} characters. Set a longer one, or unset "
+                f"it to have no judge login.")
+    if owner and hmac.compare_digest(judge.encode(), owner.encode()):
+        return "GAMEDAY_JUDGE_PASSWORD is the owner password. Give the judge login a password of its own."
     return ""
 
 

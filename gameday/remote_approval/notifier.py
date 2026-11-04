@@ -18,6 +18,7 @@ job unless the owner asks for a new one.
 from datetime import timedelta
 from pathlib import Path
 
+from gameday import access
 from gameday.remote_approval import captions, states, store, summary
 from gameday.remote_approval import settings as ra_settings
 from gameday.store import loads
@@ -51,7 +52,12 @@ def on_job_finished(db, job, status: str, *, meta=None) -> int | None:
     """Queue what this finished job should tell the owner. Returns the new
     offer's id, or None when nothing was offered (neither WhatsApp nor Muse
     on, a video the settings leave out, nothing found, or a failure notice
-    instead). `meta` (a MetaAPI) writes the captions when that is on."""
+    instead). `meta` (a MetaAPI) writes the captions when that is on.
+
+    A game uploaded with the judge login tells the owner nothing: it is never
+    offered, and its failure sends no message."""
+    if access.made_by_judge(db.get_job(job["id"]) or job):
+        return None
     config = ra_settings.load(db)
     # Offers reach the owner on WhatsApp, or through their Muse agent with
     # WhatsApp off (the relay keeps them for it). Either one is enough.

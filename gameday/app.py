@@ -1,12 +1,15 @@
 """The web app: create_app() builds it, routes and rules (docs/API.md).
 
 Rules for every route, in one ASGI layer (Guard), so nothing can skip them:
-* HTTP Basic auth as `owner`, compared in constant time, on everything but
-  GET /health; a wrong or missing password is 401 with WWW-Authenticate.
-  After LOCK_AFTER wrong passwords from one address within LOCK_WINDOW_S,
-  that address gets 429 for LOCK_FOR_S, without its password being checked.
+* HTTP Basic auth as `owner`, or as `judge` when GAMEDAY_JUDGE_PASSWORD is
+  set, compared in constant time, on everything but GET /health; a wrong or
+  missing password is 401 with WWW-Authenticate. After LOCK_AFTER wrong
+  passwords (either user's) from one address within LOCK_WINDOW_S, that
+  address gets 429 for LOCK_FOR_S, without its password being checked.
 * Every POST, PUT, PATCH and DELETE also needs X-Gameday-Action: 1, else 403,
   so a page on another site can't make the owner's browser change anything.
+* The judge login gets 403 for anything access.JUDGE_MAY doesn't list, so a
+  new route is the owner's alone until it is listed there.
 * Every answer carries the Content-Security-Policy, nosniff and no-referrer
   headers, errors and files included.
 * An error is {"error": "<a sentence for people>"}.
@@ -35,9 +38,9 @@ from fastapi.responses import JSONResponse
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from gameday import __version__
+from gameday import __version__, access
 from gameday import secrets as secret_store
-from gameday.config import OWNER_USER, Config, owner_password
+from gameday.config import JUDGE_USER, OWNER_USER, Config, StartRefused, judge_password_problem, owner_password
 from gameday.store import Store
 from gameday.types import APP_NAME
 from gameday.watch.watcher import check_folder
@@ -80,12 +83,18 @@ def client_address(scope, headers: Headers) -> str:
 
 
 class Guard:
-    """Basic auth, the action header and the security headers, for every request."""
+    """Basic auth, the action header, the judge login's limits and the
+    security headers, for every request. Who signed in goes into the request's
+    scope (access.ROLE_KEY) for the routes."""
 
-    def __init__(self, app, *, password: str, user: str = OWNER_USER, clock=time.monotonic):
+    def __init__(self, app, *, password: str, user: str = OWNER_USER, judge_password: str = "",
+                 clock=time.monotonic):
         self.app = app
-        self._user = user.encode()
-        self._password = password.encode()
+        # (user, password, role): the owner, and the judge login when it has a password.
+        self._logins = [(user.encode(), password.encode(), access.OWNER)]
+        if judge_password:
+            self._logins.append((JUDGE_USER.encode(), judge_password.encode(), access.JUDGE))
+        self._sign_in = f"Sign in as {user} or {JUDGE_USER}" if judge_password else f"Sign in as {user}"
         self._clock = clock
         self._fails: OrderedDict[str, list[float]] = OrderedDict()  # address -> times of wrong passwords
         self._locked: OrderedDict[str, float] = OrderedDict()  # address -> locked until
@@ -114,20 +123,25 @@ class Guard:
             while len(table) > MAX_TRACKED:
                 table.popitem(last=False)
 
-    def authorized(self, headers: Headers) -> bool:
+    def signed_in_as(self, headers: Headers) -> str:
+        """The role of a right user and password, "owner" or "judge"; "" for anything else."""
         value = headers.get("authorization", "")
         scheme, _, encoded = value.partition(" ")
         if scheme.lower() != "basic" or not encoded:
-            return False
+            return ""
         try:
             decoded = base64.b64decode(encoded.strip(), validate=True)
         except (binascii.Error, ValueError):
-            return False
+            return ""
         user, sep, password = decoded.partition(b":")
-        # Both compared, every time, in constant time.
-        user_ok = hmac.compare_digest(user, self._user)
-        password_ok = hmac.compare_digest(password, self._password)
-        return bool(sep) and user_ok and password_ok
+        role = ""
+        # Every login's user and password compared, every time, in constant time.
+        for login_user, login_password, login_role in self._logins:
+            user_ok = hmac.compare_digest(user, login_user)
+            password_ok = hmac.compare_digest(password, login_password)
+            if sep and user_ok and password_ok and not role:
+                role = login_role
+        return role
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -155,21 +169,30 @@ class Guard:
                     status_code=429, headers={"Retry-After": str(math.ceil(wait))})
                 await response(scope, receive, send_secure)
                 return
-            if not self.authorized(headers):
+            role = self.signed_in_as(headers)
+            if not role:
                 # A browser's first request carries no password at all: only a wrong one counts.
                 if "authorization" in headers:
                     self.failed(who, now)
                 response = JSONResponse(
-                    {"error": f"Sign in as {OWNER_USER} to use {APP_NAME}."}, status_code=401,
+                    {"error": f"{self._sign_in} to use {APP_NAME}."}, status_code=401,
                     headers={"WWW-Authenticate": f'Basic realm="{APP_NAME}", charset="UTF-8"'})
                 await response(scope, receive, send_secure)
                 return
-            self._fails.pop(who, None)  # the owner got it right: earlier typos are forgiven
+            if role == access.OWNER:
+                # The owner got it right: earlier typos are forgiven. The judge's
+                # password forgives nothing, so it can't reset guesses at the owner's.
+                self._fails.pop(who, None)
             if method in CHANGING and headers.get(ACTION_HEADER) != "1":
                 response = JSONResponse({"error": "This change needs the X-Gameday-Action: 1 header."},
                                         status_code=403)
                 await response(scope, receive, send_secure)
                 return
+            if role == access.JUDGE and not access.judge_may(method, path):
+                refusal = access.CANT_CHANGE if method in CHANGING else access.CANT_OPEN
+                await JSONResponse({"error": refusal}, status_code=403)(scope, receive, send_secure)
+                return
+            scope[access.ROLE_KEY] = role
         try:
             await self.app(scope, receive, send_secure)
         except Exception:
@@ -232,10 +255,14 @@ def sweep_uploads(store: Store, config: Config, *, older_than_s: float = 3600.0)
 def create_app(config: Config | None = None, *, pipeline=None, meta_factory=None, run_threads: bool = True,
                feed=None, probe=None) -> FastAPI:
     """The app. `pipeline`, `meta_factory`, `feed` and `probe` are seams for
-    tests (fakes of the engine, Meta, the folder feed and ffprobe)."""
+    tests (fakes of the engine, Meta, the folder feed and ffprobe). Raises
+    StartRefused for a judge password it won't use."""
     config = config or Config.from_env()
     config.ensure_dirs()
     password = owner_password(config)
+    problem = judge_password_problem(config, password)
+    if problem:
+        raise StartRefused(problem)
     store = Store(config.db_path, data_dir=config.data_dir, budget_usd=config.budget_usd)
     secret_store.attach(store, config)
     worker = Worker(store, config, pipeline=pipeline, meta_factory=meta_factory, feed=feed, probe=probe)
@@ -277,5 +304,5 @@ def create_app(config: Config | None = None, *, pipeline=None, meta_factory=None
     api.install(app, store=store, config=config, worker=worker, meta_factory=worker.meta_factory, probe=probe)
     remote.install(app, store_db=store, config=config, worker=worker, meta_factory=worker.meta_factory)
     files.install(app, config=config)
-    app.add_middleware(Guard, password=password)
+    app.add_middleware(Guard, password=password, judge_password=config.judge_password)
     return app
