@@ -134,6 +134,8 @@ The dashboard sends it with `XMLHttpRequest` so it can show upload progress.
 ```
 - The folder must exist and be readable, and must not be inside `DATA_DIR`; otherwise the answer is 400.
 - A new video file counts once it has stopped changing for 60 seconds. Each one gets one job.
+- A file with the same name and size as one already clipped from a watched folder is a copy: it is
+  skipped, with one event naming the earlier job. To clip a game again, upload it.
 - Watched files are only read.
 
 ### Jobs

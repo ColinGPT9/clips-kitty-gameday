@@ -319,7 +319,8 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
         if video["source"] == "watch":
             st = Path(video["path"]).stat()
             if (st.st_size, st.st_mtime_ns) != (video["size"], video["mtime_ns"]):
-                raise HTTPException(409, "The file changed since it was found. The watcher takes it as a new video.")
+                raise HTTPException(409, "The file changed since it was found, so this job can't run again. "
+                                         "Upload the game on Game day to clip it again.")
         # The same game run again, so it keeps who uploaded it: a judge's game stays off the phone.
         new_id = store.add_job(video["id"], store.job_settings(), retry_of=job_id, created_by=job["created_by"])
         store.add_event("info", "job", f"Job {job_id} is queued again as job {new_id}.", job_id=new_id)

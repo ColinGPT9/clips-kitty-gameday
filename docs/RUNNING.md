@@ -103,7 +103,8 @@ TODO(measured).
   example `/watch`. Set `WATCH_DIR=/watch`, or add it under **Watched folders**
   in the dashboard. A folder inside `DATA_DIR` is refused. Copy games into it
   with any tool you like. A new video counts once it has stopped changing for
-  60 seconds, and each one gets one job.
+  60 seconds, and each one gets one job. A copy of a game already clipped (the
+  same name and size) is skipped; upload it to clip it again.
 
 ## Network
 
