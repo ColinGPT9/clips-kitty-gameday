@@ -1,10 +1,10 @@
 """Secrets kept in the database, encrypted with Fernet.
 
 The key is GAMEDAY_SECRET_KEY when it is set, otherwise DATA_DIR/secret.key,
-made on first start (mode 0600). What is kept here: the Meta key, and this
-app's device id and secret for the relay. Values never leave this module in a
-log line or an answer; a value that no longer decrypts (the key changed) is
-treated as not saved.
+made on first start (mode 0600). What is kept here: the Meta key, this app's
+device id and secret for the relay, and the phone alert topic (notify.py).
+Values never leave this module in a log line or an answer; a value that no
+longer decrypts (the key changed) is treated as not saved.
 """
 
 from __future__ import annotations

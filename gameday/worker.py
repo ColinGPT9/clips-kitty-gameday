@@ -11,6 +11,10 @@
 * The relay and publish loop, every 2 s: one remote approval pass
   (remote_approval/service.py tick), then at most one upload.
 
+Phone alerts (notify.py) for a game done or failed and for an approval's
+posts are queued from these and sent by a fourth thread of their own, so a
+slow ntfy never holds up a job or the relay loop.
+
 At start (recover), a job a restart cut off becomes failed ("The app
 restarted during this job") and can be retried; an upload a restart cut off
 becomes interrupted and is never sent again by itself.
@@ -29,7 +33,7 @@ import threading
 import time
 from pathlib import Path
 
-from gameday import access
+from gameday import access, notify
 from gameday import secrets as secret_store
 from gameday.config import Config
 from gameday.store import Store, fresh_stages, loads
@@ -143,6 +147,8 @@ class Worker:
         from gameday.remote_approval.service import TickState
 
         self.relay_state = TickState()
+        #: Phone alerts through ntfy: queued from the steps below, sent on a thread of their own.
+        self.alerts = notify.Alerts(store, config)
         #: Publish job ids asked to stop (remote_approval/publishing.py reads it).
         self.cancelled: set[int] = set()
         self.current_job: int | None = None
@@ -170,6 +176,7 @@ class Worker:
         for thread in self._threads:
             thread.join(timeout)
         self._threads = []
+        self.alerts.stop()  # what is queued goes first, for a few seconds at most
         self.store.close_all()
 
     @property
@@ -289,10 +296,12 @@ class Worker:
                       stats=_jsonable(result.stats))
         if should_stop():
             return self._end(job_id, progress, "cancelled", "Cancelled after the clips were made")
-        self._captions_stage(job_id, meta, progress, saved)
+        offered = self._captions_stage(job_id, meta, progress, saved)
         message = f"{saved} clip{'s' if saved != 1 else ''} ready"
         self._end(job_id, progress, "done", message)
         store.add_event("info", "job", f"Job {job_id} is done: {message}.", job_id=job_id)
+        if saved:
+            self.alerts.game_ready(job, saved, offered=offered)  # queued only: never waits, never raises
         return "done"
 
     def _end(self, job_id: int, progress: _Progress, state: str, message: str, *, note: str = "",
@@ -310,6 +319,7 @@ class Worker:
         job_id = int(job["id"])
         self._end(job_id, progress, "failed", error, error=error)
         self.store.add_event("error", "job", f"Job {job_id} failed: {error}", job_id=job_id)
+        self.alerts.game_failed(job, error)  # queued only: never waits, never raises
         try:
             from gameday.remote_approval import notifier
 
@@ -344,10 +354,11 @@ class Worker:
 
     # ---- the captions stage: the offer on the phone ----------------------------
 
-    def _captions_stage(self, job_id: int, meta: MetaAPI | None, progress: _Progress, clips: int) -> None:
+    def _captions_stage(self, job_id: int, meta: MetaAPI | None, progress: _Progress, clips: int) -> bool:
+        """Whether the clips were offered on the phone."""
         if access.made_by_judge(self.store.get_job(job_id) or {}):
             progress.set("captions", "skipped", access.NOT_OFFERED)
-            return
+            return False
         progress("captions", 0.0, "Getting the clips ready for your phone")
         try:
             state, note = self._offer(job_id, meta, progress, clips)
@@ -358,6 +369,7 @@ class Worker:
         if state == "done":
             self.store.add_event("info", "phone", note, job_id=job_id)
             self.wake_relay()
+        return state == "done"
 
     def _offer(self, job_id: int, meta: MetaAPI | None, progress: _Progress, clips: int) -> tuple[str, str]:
         from gameday.remote_approval import notifier, service, summary
@@ -403,7 +415,8 @@ class Worker:
         from gameday.remote_approval import service
 
         try:
-            service.tick(self.store, self.relay_state, emit=self._relay_event)
+            # An offer whose uploads settled gets one phone alert (queued only).
+            service.tick(self.store, self.relay_state, emit=self._relay_event, on_settled=self.alerts.posted)
         except Exception:
             log.exception("The remote approval pass failed.")
         return self.publish_one()

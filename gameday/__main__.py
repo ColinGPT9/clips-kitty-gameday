@@ -43,6 +43,8 @@ def main() -> int:
         return 2
     logging.basicConfig(level=getattr(logging, config.log_level, logging.INFO),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    # urllib3's debug lines name each request's path, and a phone alert's path holds its secret topic.
+    logging.getLogger("urllib3").setLevel(max(logging.getLogger().level, logging.INFO))
     log = logging.getLogger("gameday")
     if weak:
         log.warning("%s It is accepted only because HOST is %s.", weak, config.host)

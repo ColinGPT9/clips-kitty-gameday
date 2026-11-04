@@ -7,7 +7,8 @@ Ported from this week's event branch. tick() runs on the relay loop
 2. offers whose uploads have all finished are settled (PUBLISHED,
    PARTIAL_FAILURE or FAILED, from what the APIs confirmed) and their
    result is queued for the relay, which keeps it for the status page and
-   Muse, and sends it on WhatsApp when that is wanted;
+   Muse, and sends it on WhatsApp when that is wanted (the worker also
+   sends a phone alert for each, gameday/notify.py);
 3. the outbox is sent to the relay, oldest first, each message once (the
    relay keys on the same event key, so a retry after a lost answer is not
    a second message);
@@ -76,13 +77,15 @@ def busy(db) -> bool:
 
 
 def tick(db, state: TickState, *, relay: Relay | None = None, emit=None, clock=time.monotonic,
-         now=None) -> int:
-    """One pass, if one is due. Returns how many uploads it queued."""
+         now=None, on_settled=None) -> int:
+    """One pass, if one is due. Returns how many uploads it queued.
+    `on_settled(review)` hears of each offer whose uploads settled (the
+    worker's phone alert, gameday/notify.py)."""
     config = ra_settings.load(db)
     if not (config["whatsapp_enabled"] or ra_settings.muse_connected(config)):
         # The phone can't be reached, but what is only local still moves on: links
         # expire, and uploads already approved (they run all the same) settle.
-        changed = expire_due(db, now or store.now_utc()) + settle_publishing(db, config)
+        changed = expire_due(db, now or store.now_utc()) + settle_publishing(db, config, on_settled=on_settled)
         if changed and emit:
             emit({"type": "remote_approval", "changed": changed})
         return 0
@@ -97,7 +100,7 @@ def tick(db, state: TickState, *, relay: Relay | None = None, emit=None, clock=t
     if relay is None:
         return 0
     now = now or store.now_utc()
-    changed = expire_due(db, now) + settle_publishing(db, config)
+    changed = expire_due(db, now) + settle_publishing(db, config, on_settled=on_settled)
     queued = 0
     try:
         if mono >= state.next_status:
@@ -140,7 +143,7 @@ def expire_due(db, now) -> int:
 # ---- 2. settling what was published -------------------------------------------------
 
 
-def settle_publishing(db, config: dict) -> int:
+def settle_publishing(db, config: dict, *, on_settled=None) -> int:
     settled = 0
     for review in store.reviews_in(db, [states.PUBLISH_QUEUED, states.PUBLISHING]):
         jobs = commands.jobs_for_review(db, review["id"])
@@ -158,9 +161,9 @@ def settle_publishing(db, config: dict) -> int:
             final = states.PARTIAL_FAILURE
         else:
             final = states.FAILED
-        store.move(db, review["id"], final, actor="publisher", results=results,
-                   detail=f"{totals['published']} published, {totals['failed']} failed, "
-                          f"{totals['unconfirmed']} unconfirmed")
+        review = store.move(db, review["id"], final, actor="publisher", results=results,
+                            detail=f"{totals['published']} published, {totals['failed']} failed, "
+                                   f"{totals['unconfirmed']} unconfirmed")
         # Always sent, so the status page and Muse ("what got posted?") have
         # it. The relay keeps it first and messages WhatsApp only when
         # notify_on_publish is on (push_preferences tells it).
@@ -168,6 +171,11 @@ def settle_publishing(db, config: dict) -> int:
                    (states.PUBLISHED.lower(), states.PARTIAL_FAILURE.lower(), states.FAILED.lower())])
         store.enqueue(db, f"result:review:{review['id']}:{nth}", "result", review_id=review["id"])
         settled += 1
+        if on_settled is not None:
+            try:
+                on_settled(review)
+            except Exception as e:  # the alert is extra: the offer has settled whatever it does
+                log.warning("Couldn't tell the worker an offer settled (%s).", type(e).__name__)
     return settled
 
 
