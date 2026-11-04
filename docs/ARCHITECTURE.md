@@ -45,8 +45,9 @@ API, Instagram and Facebook.
 - **The app** (`gameday/`), one Python process:
   - `gameday/static/`: the dashboard, plain HTML, CSS and JavaScript, with
     no build step and nothing loaded from other sites.
-  - The HTTP API in [API.md](API.md): Basic auth as `owner`, and the
-    `X-Gameday-Action` header on every change.
+  - The HTTP API in [API.md](API.md): Basic auth as `owner` (or as `judge`,
+    which may only upload and look), and the `X-Gameday-Action` header on
+    every change.
   - `gameday/engine/`: the pipeline (`gameday.engine.pipeline.run`).
   - `gameday/meta_api/`: `MetaClient`, the only code that calls Meta's
     models.

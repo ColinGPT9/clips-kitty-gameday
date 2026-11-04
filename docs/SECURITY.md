@@ -8,8 +8,9 @@ against.
 - **Nothing is posted without an explicit approval** on the approval page:
   the clips and places ticked, a confirm box, and the PIN. The dashboard has
   no "post now".
-- **Only the owner reaches the app.** Every route except `GET /health` needs
-  the owner password, and the app sits behind HTTPS.
+- **Only the owner changes the app.** Every route except `GET /health` needs
+  a password, and the app sits behind HTTPS. The optional judge login, for
+  the event's judges, can upload and look, and change nothing else.
 - **The relay never calls the app.** The app calls out to the relay (signed
   requests) and to `api.meta.ai`. The sign-in redirects, Muse's calls and
   the phone's pages all land on the relay.
@@ -33,6 +34,7 @@ against.
 |---|---|
 | Someone else opens the dashboard | HTTP Basic auth as `owner` on every route except `GET /health`. The password comes from `GAMEDAY_PASSWORD`, or is generated on the first start into `DATA_DIR/owner-password.txt` (mode 0600). The log says where it is, never what it is |
 | Someone guessing the password | 10 wrong passwords from one address in 10 minutes lock that address out for 15 minutes (429), without its password being checked. A `GAMEDAY_PASSWORD` shorter than 12 characters stops the app from starting unless it listens on `127.0.0.1` only |
+| A judge, or whoever has the judge password, changing the app or posting | The judge login (`GAMEDAY_JUDGE_PASSWORD`, user `judge`) gets 403 for everything but the dashboard's reads, uploads, and cancel or retry of its own games. That is checked in one place before any route runs, so a route added later is the owner's alone until `gameday/access.py` lists it. Its games are never offered on the owner's phone. Its password must have 12 characters or more and differ from the owner's, or the app doesn't start. Its wrong tries count toward the same lockout, and its right one forgives none, so it can't be used to keep guessing the owner's |
 | The password seen on the wire | HTTPS at the proxy; port 8080 is never published to the internet ([RUNNING.md](RUNNING.md)) |
 | Another site posting to the app with the owner's saved password | Every POST, PUT, PATCH and DELETE needs the header `X-Gameday-Action: 1`, or it gets 403. A page on another site can't add that header to a request to the app |
 | Script injection in the dashboard | `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`. The dashboard has no inline scripts or styles and loads nothing from other sites (`tests/test_static.py`). Also `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` |

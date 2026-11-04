@@ -23,8 +23,9 @@ It needs no root. Run it as an ordinary user that owns `DATA_DIR`.
 ## Environment
 
 Every variable is optional. The ones that hold secrets (`GAMEDAY_PASSWORD`,
-`GAMEDAY_SECRET_KEY`, `META_API_KEY`, `RELAY_ENROLMENT_KEY`) belong in the
-host's secret store, never in the image or in a file in git.
+`GAMEDAY_JUDGE_PASSWORD`, `GAMEDAY_SECRET_KEY`, `META_API_KEY`,
+`RELAY_ENROLMENT_KEY`) belong in the host's secret store, never in the image
+or in a file in git.
 
 | Variable | Default | Meaning, and what to set when hosting |
 |---|---|---|
@@ -32,6 +33,7 @@ host's secret store, never in the image or in a file in git.
 | `HOST` | `127.0.0.1` | Set `0.0.0.0` in a container, so the proxy can reach the app. |
 | `PORT` | `8080` | |
 | `GAMEDAY_PASSWORD` | generated | The owner password (user `owner`). If unset, one is made on the first start and saved to `DATA_DIR/owner-password.txt` (mode 0600). The log says where it is, never what it is. If you set it, use at least 12 characters: with a shorter one the app refuses to start unless `HOST` is `127.0.0.1`. |
+| `GAMEDAY_JUDGE_PASSWORD` | | The judge login's password (user `judge`), for people who should try the app without the owner password, such as the event's judges. The judge can upload games and see everything the dashboard shows, and change nothing else: no settings, keys, watched folders or phone setup. Its games are never offered on your phone ([API.md](API.md#the-judge-login)). Use at least 12 characters, not the owner password, or the app refuses to start. If unset, there is no judge login. |
 | `GAMEDAY_SECRET_KEY` | generated | The Fernet key that encrypts stored secrets, such as a saved Meta key. If unset, it is kept in `DATA_DIR/secret.key` (0600). If you set it, never change it: a new key can't read what the old one saved. |
 | `META_API_KEY` | | If set, used instead of a key saved in the dashboard, which then shows "from the environment". |
 | `META_BUDGET_USD` | `25` | Meta calls are refused once estimated spending passes this. |
@@ -82,7 +84,9 @@ up, and treat the backup as secret: it holds the encrypted secrets and, unless
 | `DATA_DIR/media/jobs/<job_id>/tmp/` | each job's scratch files, never served, removed at the end unless `GAMEDAY_KEEP_TMP=1` |
 
 On the first start, read the owner password from `owner-password.txt` in the
-volume, then sign in at `https://<your host>/` as `owner`.
+volume, then sign in at `https://<your host>/` as `owner`. The judge login
+has no file: its password is the `GAMEDAY_JUDGE_PASSWORD` you set. Give that
+one to the judges, privately, and never the owner password.
 
 Disk: plan for every uploaded game plus its clips. How much a game takes:
 a 22.5-minute game was a 138 MB upload and made 173 MB of clips (8 clips,
@@ -120,3 +124,5 @@ phone-approval loop live inside the process, and SQLite is its database.
 2. Sign in as `owner`. In **Setup**, save the Meta key (or set
    `META_API_KEY`) and press **Test**.
 3. Upload a short clip and watch the stepper on **Game day**.
+4. With `GAMEDAY_JUDGE_PASSWORD` set, sign in as `judge` in a private
+   window: the dashboard says **Judge view** and has no **Setup**.

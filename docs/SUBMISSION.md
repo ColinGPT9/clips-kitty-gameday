@@ -9,8 +9,9 @@ AGPL-3.0-or-later)
 
 **Demo video:** TODO
 
-**Try it:** TODO (the hosted address; the owner password goes to the judges
-privately)
+**Try it:** https://18-190-220-192.sslip.io, user `judge`, with the password
+in the submission's private field. No account to make
+([How to try it](#how-to-try-it)).
 
 ## What existed before this event, and what was built during it
 
@@ -81,6 +82,8 @@ anything but these three. ffmpeg cuts and renders; it is a tool, not a model.
   The PIN is never given to Muse or any assistant.
 - The app is behind HTTPS and an owner password. The relay never calls the
   app; Meta's app secret and the account tokens live only on the relay.
+- Judges get a login of their own. It can upload and look, but it can't
+  change settings or keys, or reach the owner's phone or accounts.
 - Every Meta call checks a budget first and is logged with its estimated
   cost.
 
@@ -132,7 +135,23 @@ Navy vs Air Force, 2024 Armed Forces Men's Basketball Championship.
 
 ## How to try it
 
-- **Hosted:** TODO (address and password, sent privately).
+- **Hosted, with nothing to sign up for:** open
+  https://18-190-220-192.sslip.io and sign in as `judge`, with the password
+  in the submission's private field. The dashboard then says **Judge view**.
+  There you can:
+  - upload a short game on **Game day** (a few minutes of a basketball
+    broadcast is plenty), or open the sample game already clipped there;
+  - watch the stepper run Muse Voice, Muse Spark, SAM 3.1 and the 9:16
+    render, each with its time and estimated cost;
+  - watch and download the clips on **Clips**, and open **How it follows the
+    ball** under a clip to see SAM 3.1's box on the ball and the crop;
+  - see the spending on **Usage**, and each step the app took under
+    **Activity**.
+
+  The judge login can't change settings or keys, and a game it uploads is
+  never offered on the owner's phone, so its Captions stage is skipped.
+  Posting and phone approval are shown in the demo video instead, because
+  they post to the owner's real Instagram and Facebook accounts.
 - **On your computer:** [LOCAL_SETUP.md](LOCAL_SETUP.md). Python 3.11 and
   ffmpeg; a Meta Model API key for the models.
 - **Phone approval without any Meta account:** the relay's local mode with

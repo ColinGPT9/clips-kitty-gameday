@@ -28,6 +28,7 @@ sudo bash scripts/setup-lightsail.sh 203-0-113-7.sslip.io
 The script:
 - installs ffmpeg, Python and Caddy;
 - installs the app;
+- makes two passwords, for you and for the judges, without printing them;
 - runs the app as a service that restarts on its own;
 - gets an HTTPS certificate.
 
@@ -40,11 +41,24 @@ It takes about 5 minutes.
 2. Open `https://203-0-113-7.sslip.io` and sign in as `owner`.
 3. In **Setup**, save your Meta key and press **Test**.
 
+## The judges' login
+
+Judges sign in as `judge`, with a password of its own, so you never give out
+yours. The judge login can upload games and see everything the dashboard
+shows, but it can't change settings, keys, watched folders or anything for
+the phone. Its games are never offered on your phone, and their Meta usage
+counts toward the same budget.
+
+- Show its password: `sudo grep GAMEDAY_JUDGE_PASSWORD /etc/gameday.env`.
+- Put it in the submission's private field, with the user `judge`.
+- A server set up before the judge login gets this password the next time
+  you run the setup script.
+
 ## Using it
 
 - **Games:** upload them on **Game day**, or copy them into `/srv/gameday-watch` with `scp`.
 - **Logs:** `journalctl -u gameday -f`.
-- **Update:** `git pull`, then run the setup script again. Your password and data stay.
+- **Update:** `git pull`, then run the setup script again. Your passwords and data stay.
 - **Bigger games:** uploads are capped at 4 GB. To raise the cap, run the
   script again with the new limit in GB, for example
   `sudo bash scripts/setup-lightsail.sh 203-0-113-7.sslip.io 20`. Keep it well
