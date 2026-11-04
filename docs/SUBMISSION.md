@@ -123,13 +123,26 @@ More in [SECURITY.md](SECURITY.md).
   as a custom connector (the remote MCP server, with the key in a header)
   and handed over an offer's approval link, which opened on the phone.
 
-## What's next
+## How SAM 3.1 compares, and what's next
 
-**Ball tracking trained for basketball.** SAM 3.1 is a general-purpose
-model. It finds the ball well in clear shots, and loses it when the ball is
-small, fast or in front of the backboard. The next step is to train a Meta
-vision model, Muse Glimmer, on a dataset of basketball games, so the crop
-follows the ball through every play.
+**An offline test, not part of the app.** Both models saw the same 1,170
+frames of the demo game (eight stretches of live play, 640x360, 10 fps):
+SAM 3.1, and E-BARD, a YOLOv8n detector trained on basketball.
+
+| | SAM 3.1 (Meta) | E-BARD (basketball-trained YOLOv8n) |
+|---|---|---|
+| Frames where it found the ball | 60% | 32% (19% at its stricter setting) |
+| When the two disagreed, it was on the ball | about 337 of 362 | 1 |
+| Ball near the rim (78 frames) | 77 | 11 |
+
+- An AI reviewer checked the ball calls on the disagreements.
+- The app itself only ever calls SAM 3.1. E-BARD ran in a separate setup for this test only.
+- E-BARD (https://github.com/GabrieleGiudic/E-BARD) was used unmodified under CC BY 4.0.
+
+**Next: ball tracking trained for basketball.** SAM 3.1 still found no ball
+on about 40% of these frames. The next step is to fine-tune a Meta vision
+model, Muse Glimmer, on a dataset of basketball games. That needs more time
+and a bigger GPU than this project had.
 
 ## Demo footage
 
