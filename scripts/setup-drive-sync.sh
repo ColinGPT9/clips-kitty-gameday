@@ -6,7 +6,8 @@
 #
 # Run scripts/setup-lightsail.sh first. Before this one, on a computer with a
 # browser, run
-#   rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLnJlYWRvbmx5In0="
+#   rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLnJlYWRvbmx5In0"
+# (that blob is {"scope":"drive.readonly"} in unpadded base64, which rclone requires)
 # sign in to Google, and copy the token it prints. This script asks for it.
 # The token is read-only: the server can download from your Drive, never
 # change or delete anything in it. Files are only copied, never removed.
