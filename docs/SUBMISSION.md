@@ -144,6 +144,16 @@ on about 40% of these frames. The next step is to fine-tune a Meta vision
 model, Muse Glimmer, on a dataset of basketball games. That needs more time
 and a bigger GPU than this project had.
 
+**Next: WhatsApp alerts.** The relay can already send a WhatsApp message when
+highlights are ready.
+- On the night of 3 Nov I set it up with Meta's WhatsApp test number. The
+  token, the webhook and my own phone as a recipient were all in place.
+- Meta then locked the new WhatsApp Business Account (error 131031) before a
+  message went out, so I couldn't launch with it in time.
+- The entry ships with Muse and the approval page as the phone flow, plus a
+  phone alert app (ntfy) for "highlights ready".
+- Once the account is reviewed and unlocked, WhatsApp is a setting away.
+
 ## Demo footage
 
 Navy vs Air Force, 2024 Armed Forces Men's Basketball Championship.
