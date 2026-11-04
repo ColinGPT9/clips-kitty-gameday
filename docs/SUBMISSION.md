@@ -104,6 +104,13 @@ More in [SECURITY.md](SECURITY.md).
   public domain).
   - It made 8 clips in 347 s for about $0.87, about 11 cents a clip.
   - SAM 3.1 kept the window on the ball 43-81% of the time, and on the players the rest.
+- **The same game on the hosted server (3 Nov 2026):** the 45-minute game
+  went into the watched folder of an AWS Lightsail server with 2 vCPUs and
+  4 GB RAM. It made 8 clips in about 14 minutes for about $0.80, about 10
+  cents a clip.
+- **A live post from the hosted server (3 Nov 2026):** one clip was approved
+  on a phone with the PIN and posted as an Instagram Reel and a Facebook
+  Page Reel.
 - **Cost to post:** Instagram and Facebook Reels go through Meta's Graph
   API at no charge. Muse Spark's captions for a one-clip offer cost
   $0.004.

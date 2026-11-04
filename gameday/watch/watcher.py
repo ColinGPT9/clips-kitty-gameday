@@ -6,6 +6,12 @@ writing, a video ffprobe can read), recorded as a video of its watch, and
 queued with the job settings of that moment. The file is only ever read, in
 place, by its own job. One changed later (new size or time) is a new video.
 
+Except a copy of a game already clipped: a file with the name and size of
+one a watch has queued before, in any watch, is that game copied in again
+(a copy gets a new time). It is skipped before it is read, and said once.
+Clipping it again would pay Meta for clips the app already has. An upload on
+Game day always makes a new job, so that is how a game is clipped again.
+
 Also the rules for adding a watch (check_folder), shared with the routes.
 """
 
@@ -52,8 +58,9 @@ class Watcher:
         self.store = store
         self.feed = feed or FolderFeed()
         self._probe = probe
-        # Files that could not be used, by identity, with why: said once, not
-        # every ten seconds. In memory: a restart looks at each once more.
+        # Files that are not clipped, by identity, with why (not a video, or a
+        # copy of a game already clipped): said once, not every ten seconds.
+        # In memory: a restart looks at each once more.
         self._bad: dict[tuple[str, int, int], str] = {}
         self._waiting: dict[tuple[str, int, int], str] = {}
 
@@ -87,6 +94,12 @@ class Watcher:
     def _take(self, watch, found: Found) -> bool:
         key = found.key
         if key in self._bad or self.store.found_video(*key) is not None:
+            return False
+        earlier = self.store.clipped_before(found.path.name, found.size)
+        if earlier is not None:
+            self._bad[key] = (f"the same file (name and size) was already clipped as job {earlier}. "
+                              "Upload it on Game day to clip it again.")
+            self.store.add_event("warn", "watch", f"Skipped {found.path.name}: {self._bad[key]}", job_id=earlier)
             return False
         why = self.feed.not_ready(found)
         if why:

@@ -84,3 +84,45 @@ Each run gives:
     The rest of each clip followed the players.
 - **Found:** some clips ran past the play into the broadcast's close-ups. Each
   clip should end at the first camera cut after the play.
+
+## 3 Nov 2026, evening: the hosted server and a live post
+
+- **Where:** the hosted server, on AWS Lightsail in Ohio (2 vCPUs, 4 GB RAM),
+  with Meta's real services. The numbers are from the server's own job
+  records.
+- **Commit:** f59dcec, for the three game runs.
+- **What ran:**
+  - The HD demo game, the second half of Navy vs Air Force (45.0 minutes),
+    copied into the server's watched folder. The app found it and clipped it.
+  - It ran three times, because the same file was copied in twice more by
+    mistake (see Found).
+  - Then one clip was approved on the phone with the PIN and posted.
+- **Result:**
+  - Each run made 8 clips.
+  - Time and estimated cost of each whole run: 874 s and $0.8014, 824 s and
+    $0.8345, 806 s and $0.7966.
+  - Time per stage, run by run:
+    - Muse Voice 183, 173 and 185 s.
+    - Muse Spark 40, 40 and 38 s.
+    - SAM 3.1 368, 314 and 320 s.
+    - Render 257, 279 and 244 s.
+    - Captions 25, 18 and 19 s.
+  - Estimated cost per stage, over the three runs: Muse Voice $0.135 each
+    time, Muse Spark $0.028-0.032, SAM 3.1 $0.624-0.658, captions (Muse
+    Spark) $0.009-0.010.
+  - Posted: the approved clip went up as an Instagram Reel and a Facebook
+    Page Reel.
+- **Found:**
+  - The same game was clipped three times. A copy of a file keeps its name
+    and size but gets a new time, and the watcher knew a file by its path,
+    size and time, so it took each copy for a new video. Fixed since: a
+    watched file with the name and size of one a watch has queued before is
+    skipped, with one line in the activity list. An upload on Game day still
+    clips a game again.
+  - The first posts that evening were refused with a Meta permission error.
+    Meta had paused the developer account for an account confirmation
+    ("unusual activity"), and a paused account's apps are switched off. Once
+    the owner had confirmed the account and reconnected Facebook and
+    Instagram, the post went through. The app's message for that refusal
+    now says to finish any confirmation Meta asks for on
+    developers.facebook.com (82fc073).
