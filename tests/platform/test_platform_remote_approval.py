@@ -12,10 +12,10 @@ import json
 from datetime import timedelta
 
 import pytest
-from platform_fakes import SECRET, FakeMeta, FakeRelay, finished_job, sign_command, switch_on
+from platform_fakes import SECRET, FakeMeta, FakeRelay, SaysLine, finished_job, sign_command, switch_on
 
 from gameday import access
-from gameday.remote_approval import captions, commands, notifier, service, states, store, summary, usage, whatsapp_text
+from gameday.remote_approval import captions, commands, notifier, offer_line, service, states, store, summary, usage
 from gameday.remote_approval import settings as ra_settings
 from gameday.remote_approval.relay import RelayError
 from gameday.types import MetaError
@@ -333,7 +333,7 @@ def test_muse_spark_writes_every_clips_words_in_one_request_and_it_is_kept(db, o
     assert text["instagram"].endswith("#hoops #game #day #basketball")  # hashtags never hold a space
     # Kept: a second offer of the same clips asks nothing.
     assert captions.generate(db, review, {}, meta=meta) == review["captions"]
-    assert [c[1] for c in meta.calls] == ["captions", "whatsapp_text"]  # and the WhatsApp line, once
+    assert [c[1] for c in meta.calls] == ["captions", "offer_line"]  # and the offer's line, once
     assert db.job_cost(job["id"]) == 0.004
 
 
@@ -343,7 +343,7 @@ def test_hashtags_muse_spark_puts_in_the_caption_are_posted_once(db, on):
 
     def with_hashtags_inside(*args, **kwargs):
         answer = plain(*args, **kwargs)
-        for clip in answer.get("clips") or []:  # the captions, not the WhatsApp line
+        for clip in answer.get("clips") or []:  # the captions, not the offer's line
             clip["instagram_caption"] += " #Hoops #Clutch"  # what the real Muse Spark did
             clip["facebook_description"] = "What a #clutch finish. #HOOPS"
         return answer
@@ -357,74 +357,104 @@ def test_hashtags_muse_spark_puts_in_the_caption_are_posted_once(db, on):
     assert "no hashtags" in captions.INSTRUCTIONS
 
 
-# ---- Muse Spark's line for the WhatsApp message --------------------------------------------
+# ---- Muse Spark's one-line summary of the offer ---------------------------------------------
 
 
 COUNTED = "5 clips: 2 dunks, 1 three, 1 block and 1 other play"
+#: What FakeMeta writes for the plays finished_job makes (platform_fakes.spark_line).
+LINE = "5 big plays, led by the poster dunk in the third"
 
 
-class SaysLine(FakeMeta):
-    """Muse Spark answering the WhatsApp line request with `line`."""
-
-    def __init__(self, line, **kw):
-        super().__init__(**kw)
-        self.line = line
-
-    def chat_json(self, messages, schema, *, name, purpose, **kw):
-        answer = super().chat_json(messages, schema, name=name, purpose=purpose, **kw)
-        return {"line": self.line} if purpose == "whatsapp_text" else answer
+@pytest.fixture
+def muse_on(db, data_dir):
+    """Muse alone, as the dashboard sets the phone up: a Muse key and remote
+    approval on, the app registered, every platform connected."""
+    switch_on(db, whatsapp=False, muse=True)
+    return data_dir
 
 
 def sent_summary(db) -> str:
+    """The summary_text the relay is sent with the offer just made: what Muse
+    says and the approval page shows."""
     relay = FakeRelay()
     service.flush_outbox(db, relay)
     [body] = [b for b in relay.notified if b["kind"] == "ready"]
     return body["summary_text"]
 
 
-def test_muse_spark_writes_the_whatsapp_line_and_the_message_carries_it(db, on):
+def skipped_because(db, review_id: int) -> str:
+    [skipped] = [a for a in store.audit_log(db, review_id) if a["action"] == "offer_line_skipped"]
+    return skipped["detail"]
+
+
+def test_muse_spark_writes_a_muse_offers_line_and_the_relay_gets_it_as_its_summary(db, muse_on):
     meta = FakeMeta(db.ledger())
-    job = finished_job(db, on, hint="Blue and Gold", credit="Footage: a notice")
+    job = finished_job(db, muse_on, hint="Blue and Gold", credit="Footage: a notice")
     review = store.get_review(db, notifier.on_job_finished(db, job, "done", meta=meta))
-    [(_, purpose, job_id, messages)] = [c for c in meta.calls if c[1] == "whatsapp_text"]
-    assert (purpose, job_id) == ("whatsapp_text", job["id"])
-    assert "Ready to review: <line>" in messages[0]["content"] and "No hashtags, no links, no emojis" in \
-        messages[0]["content"]
+    assert [c[1] for c in meta.calls] == ["captions", "offer_line"]  # one small request for the line
+    [(_, _, job_id, messages)] = [c for c in meta.calls if c[1] == "offer_line"]
+    assert job_id == job["id"]
+    assert "one-line summary" in messages[0]["content"]
+    assert "No hashtags, no links, no emojis" in messages[0]["content"]
     told = json.loads(messages[1]["content"])
     assert told["clip_count"] == 5 and told["counts"] == "2 dunks, 1 three, 1 block and 1 other play"
     assert told["clips"][0] == {"title": "Poster dunk in the third", "kind": "dunk"}  # best first
     # Only the clips' titles and plays: no commentary, no hint, no credit line.
     said = json.dumps(messages)
     assert "What a poster dunk" not in said and "Blue and Gold" not in said and "notice" not in said
-    line = "5 big plays, led by the poster dunk in the third"
-    assert review["summary"]["whatsapp_text"]["line"] == line
-    assert sent_summary(db) == line
+    assert "whatsapp" not in said.lower()
+    assert review["summary"]["offer_line"] == {"line": LINE, "fingerprint": review["fingerprint"],
+                                               "model": "muse-spark-1.3"}
+    assert offer_line.summary_text(review) == sent_summary(db) == LINE
     # On the ledger with the captions, in the job's Captions stage.
     assert db.job_cost(job["id"]) == 0.004
     from gameday.routes.api import stage_of_call
 
-    assert stage_of_call("muse-spark-1.3", "whatsapp_text") == stage_of_call("muse-spark-1.3", "captions") == "captions"
+    assert stage_of_call("muse-spark-1.3", "offer_line") == stage_of_call("muse-spark-1.3", "captions") == "captions"
 
 
-def test_the_whatsapp_line_is_kept_for_a_resend_and_an_offer_of_the_same_clips(db, on):
+def test_the_line_is_written_with_muse_sparks_captions_off_too(db, muse_on):
+    ra_settings.save(db, {"muse_captions": False})
     meta = FakeMeta(db.ledger())
-    review_id = notifier.on_job_finished(db, finished_job(db, on), "done", meta=meta)
-    line = sent_summary(db)
+    review_id = notifier.on_job_finished(db, finished_job(db, muse_on), "done", meta=meta)
+    assert [c[1] for c in meta.calls] == ["offer_line"]
+    assert store.get_review(db, review_id)["captions"] == {}  # the clips' own captions
+    assert sent_summary(db) == LINE
+
+
+def test_a_videos_line_is_asked_for_in_plain_words(db, muse_on):
+    ra_settings.save(db, {"basketball_only": False})
+    meta = FakeMeta(db.ledger())
+    job = finished_job(db, muse_on, mode="talk", plays=[("other", "Coach speaks", 70)] * 2)
+    notifier.on_job_finished(db, job, "done", meta=meta)
+    [(_, _, _, messages)] = [c for c in meta.calls if c[1] == "offer_line"]
+    assert "moments" in messages[0]["content"] and "basketball" not in json.dumps(messages).lower()
+    assert json.loads(messages[1]["content"])["clips"][0]["kind"] == "highlight"
+
+
+def test_the_line_is_kept_and_an_offer_of_the_same_clips_reuses_it(db, muse_on):
+    meta = FakeMeta(db.ledger())
+    review_id = notifier.on_job_finished(db, finished_job(db, muse_on), "done", meta=meta)
+    assert sent_summary(db) == LINE
     store.move(db, review_id, states.EXPIRED, actor="test")
     again = store.get_review(db, service.ask_again(db, review_id, meta=meta))
-    assert whatsapp_text.summary_text(again) == line
-    assert [c[1] for c in meta.calls].count("whatsapp_text") == 1  # asked once
+    assert offer_line.summary_text(again) == LINE
+    assert [c[1] for c in meta.calls].count("offer_line") == 1  # asked once
 
 
-def test_the_line_is_cleaned_to_one_line_for_the_template():
-    raw = '  "A monster dunk,\n\ta deep three    and a block!" \U0001f525\U0001f3c0‍️  '
-    assert whatsapp_text.clean(raw) == "A monster dunk, a deep three and a block"
-    assert whatsapp_text.clean("Big night \U0001f44d\U0001f3fd for the bench…") == "Big night for the bench"
-    for line in (whatsapp_text.clean(raw), whatsapp_text.clean("one\r\ntwo\x0bthree")):
+def test_the_line_is_cleaned_to_one_line_and_capped():
+    raw = ('  "A monster dunk,\n\ta deep three    and a block!" '
+           '\U0001f525\U0001f3c0\N{ZERO WIDTH JOINER}\N{VARIATION SELECTOR-16}  ')
+    assert offer_line.clean(raw) == "A monster dunk, a deep three and a block"
+    assert offer_line.clean("Big night \U0001f44d\U0001f3fd for the bench…") == "Big night for the bench"
+    assert offer_line.clean("“Two dunks and a block.”") == "Two dunks and a block"
+    for line in (offer_line.clean(raw), offer_line.clean("one\r\ntwo\x0bthree")):
         assert "\n" not in line and "\t" not in line and "    " not in line
     review = {"clips": [], "summary": {"offered": 2, "total_clips": 2, "counts": {"dunks": 2}}}
-    assert whatsapp_text.problem("x" * 200, review) == ""
-    assert "longer than 200" in whatsapp_text.problem("x" * 201, review)
+    assert offer_line.problem("x" * 200, review) == ""
+    assert "longer than 200" in offer_line.problem("x" * 201, review)
+    # Counted as the relay counts (it keeps 300): a character outside the BMP is two.
+    assert "longer than 200" in offer_line.problem("\U00020000" * 101, review)
 
 
 @pytest.mark.parametrize("line, why", [
@@ -436,48 +466,44 @@ def test_the_line_is_cleaned_to_one_line_for_the_template():
     ("A #poster dunk and a block", "hashtag"),
     ("3 dunks and a block", "a number the clips don't have"),  # there were 2
 ], ids=["empty", "only-emoji", "too-long", "link", "bare-link", "hashtag", "made-up-number"])
-def test_a_line_that_breaks_the_rules_is_not_sent_and_the_counts_go_instead(db, on, line, why):
+def test_a_line_that_breaks_the_rules_is_not_used_and_the_counts_go_instead(db, muse_on, line, why):
     meta = SaysLine(line, ledger=db.ledger())
-    review_id = notifier.on_job_finished(db, finished_job(db, on), "done", meta=meta)
+    review_id = notifier.on_job_finished(db, finished_job(db, muse_on), "done", meta=meta)
     assert sent_summary(db) == COUNTED
-    [skipped] = [a for a in store.audit_log(db, review_id) if a["action"] == "whatsapp_text_skipped"]
-    assert why in skipped["detail"]
+    assert why in skipped_because(db, review_id)
+    assert offer_line.line_of(store.get_review(db, review_id)) == ""  # nothing kept
 
 
-def test_a_number_the_counts_or_a_title_hold_is_allowed(db, on):
+def test_a_number_the_counts_or_a_title_hold_is_allowed(db, muse_on):
     plays = [("dunks", "Dunk at 7 seconds left", 90), ("dunks", "Dunk", 80), ("threes", "Three", 70)]
     meta = SaysLine("2 dunks, one with 7 seconds left, and a three", ledger=db.ledger())
-    notifier.on_job_finished(db, finished_job(db, on, plays=plays), "done", meta=meta)
+    notifier.on_job_finished(db, finished_job(db, muse_on, plays=plays), "done", meta=meta)
     assert sent_summary(db) == "2 dunks, one with 7 seconds left, and a three"
 
 
-def test_without_a_key_or_when_muse_spark_fails_the_message_says_the_counts(db, on):
-    notifier.on_job_finished(db, finished_job(db, on), "done")  # no Meta key
+def test_without_a_key_or_when_muse_spark_fails_the_offer_says_the_counts(db, muse_on):
+    notifier.on_job_finished(db, finished_job(db, muse_on), "done")  # no Meta key: nothing is asked
     assert sent_summary(db) == COUNTED
     failing = FakeMeta(db.ledger(), fail=MetaError("Muse Spark answered 503.", status=503))
-    review_id = notifier.on_job_finished(db, finished_job(db, on, title="Blue vs Red"), "done", meta=failing)
+    review_id = notifier.on_job_finished(db, finished_job(db, muse_on, title="Blue vs Red"), "done", meta=failing)
     assert sent_summary(db) == COUNTED
-    [skipped] = [a for a in store.audit_log(db, review_id) if a["action"] == "whatsapp_text_skipped"]
-    assert skipped["detail"] == "Muse Spark answered 503."
+    assert skipped_because(db, review_id) == "Muse Spark answered 503."
     assert store.get_review(db, review_id)["state"] == states.NOTIFICATION_SENT  # the offer went all the same
 
 
-def test_no_whatsapp_line_is_asked_for_without_whatsapp_or_for_a_judges_game(db, data_dir):
+def test_no_line_is_asked_for_a_judges_game(db, muse_on):
     meta = FakeMeta(db.ledger())
-    switch_on(db, whatsapp=False, muse=True)  # Muse alone: no WhatsApp message to write
-    notifier.on_job_finished(db, finished_job(db, data_dir), "done", meta=meta)
-    assert [c[1] for c in meta.calls] == ["captions"]
-    assert sent_summary(db) == COUNTED
-    # A judge's game is never offered; asked directly, no line is asked for it either.
-    switch_on(db)
-    job = finished_job(db, data_dir, title="Judged")
+    job = finished_job(db, muse_on, title="Judged")
     db.conn.execute("UPDATE jobs SET created_by = 'judge' WHERE id = ?", (job["id"],))
     db.conn.commit()
+    # It is never offered; asked directly, no line is asked for it either.
     assert notifier.on_job_finished(db, db.get_job(job["id"]), "done", meta=meta) is None
+    assert meta.calls == []
     review_id = notifier.offer(db, job_id=job["id"], video_id=job["video_id"], title="Judged",
                                clips=notifier.clips_of_job(db, job["id"]), meta=meta)
-    assert whatsapp_text.write(db, review_id, meta) == access.NOT_OFFERED
-    assert [c[1] for c in meta.calls].count("whatsapp_text") == 0
+    assert offer_line.write(db, review_id, meta) == access.NOT_OFFERED
+    assert "offer_line" not in [c[1] for c in meta.calls]
+    assert offer_line.summary_text(store.get_review(db, review_id)) == COUNTED
 
 
 # ---- the credit line ----------------------------------------------------------------------
@@ -510,7 +536,7 @@ def test_muse_sparks_captions_end_with_the_credit_line_and_spark_is_never_shown_
     meta = FakeMeta(db.ledger())
     job = finished_job(db, on, hint="Blue and Gold", credit=CREDIT)
     review = store.get_review(db, notifier.on_job_finished(db, job, "done", meta=meta))
-    assert [c[1] for c in meta.calls] == ["captions", "whatsapp_text"]
+    assert [c[1] for c in meta.calls] == ["captions", "offer_line"]
     told = " ".join(m["content"] for c in meta.calls for m in c[3])
     assert "DVIDS" not in told and "endorsement" not in told  # never asked to write or reword it, nor shown it
     entry = review["clips"][0]
@@ -1187,7 +1213,7 @@ def test_usage_counts_the_meta_models_from_the_ledger(db, on):
     meta = FakeMeta(db.ledger())
     notifier.on_job_finished(db, finished_job(db, on), "done", meta=meta)
     got = usage.summary(db)
-    # The captions and the WhatsApp line.
+    # The captions and the offer's line.
     assert got["muse_spark"] == {"requests": 2, "prompt_tokens": 1800, "cached_tokens": 0, "completion_tokens": 600,
                                  "usd": 0.004}
     assert got["muse_voice"]["requests"] == 0 and got["estimated_usd"] == 0.004

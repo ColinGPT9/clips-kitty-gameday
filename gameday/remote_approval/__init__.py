@@ -8,8 +8,8 @@ through them:
 
 * notifier.py   - the worker's "captions" stage calls in here when a job
                   finishes. It snapshots the job's clips, counts the
-                  highlights, has Muse Spark write the captions (and the
-                  WhatsApp message's line, whatsapp_text.py), and queues the
+                  highlights, has Muse Spark write the captions and the
+                  offer's one-line summary (offer_line.py), and queues the
                   offer. No relay call on the pipeline thread.
 * service.py    - runs on the relay loop. Sends what the outbox holds to the
                   relay, asks the relay for decisions made on the phone, and

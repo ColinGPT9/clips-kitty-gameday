@@ -48,7 +48,7 @@ class ApiCall:
 
     model: str
     endpoint: str  # "/asr/transcribe", "/chat/completions", "/responses"
-    purpose: str  # "transcribe", "moments", "captions", "whatsapp_text", "track", "test", ...
+    purpose: str  # "transcribe", "moments", "captions", "offer_line", "track", "test", ...
     ok: bool
     status: int  # HTTP status, 0 when there was no answer
     ms: int

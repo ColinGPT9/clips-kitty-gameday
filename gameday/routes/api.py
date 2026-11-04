@@ -24,8 +24,8 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9._ -]+")
 
 
 #: Muse Spark's calls made with the offer, so in the Captions stage: the
-#: captions, and the WhatsApp message's line (remote_approval/whatsapp_text.py).
-CAPTIONS_PURPOSES = frozenset({"captions", "whatsapp_text"})
+#: captions, and the offer's one-line summary (remote_approval/offer_line.py).
+CAPTIONS_PURPOSES = frozenset({"captions", "offer_line"})
 
 
 def stage_of_call(model: str, purpose: str) -> str | None:

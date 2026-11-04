@@ -2,10 +2,10 @@
 
 Ported from this week's event branch (where the desktop worker's announce
 step called it). What happens here is database writes, a look at the clip
-files, and at most two Muse Spark requests, for the captions and for the
-WhatsApp message's line: never a relay call. The pipeline thread must never wait on WhatsApp, and a relay that is
-down must never fail or slow a job. The relay loop (service.tick) sends what
-this queues.
+files, and at most two Muse Spark requests, one for the captions and one for
+the offer's one-line summary: never a relay call. The pipeline thread must
+never wait on the phone, and a relay that is down must never fail or slow a
+job. The relay loop (service.tick) sends what this queues.
 
 Each job is one run of one video, so the clips offered are exactly that
 job's clips (clips_of_job).
@@ -19,7 +19,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from gameday import access
-from gameday.remote_approval import captions, states, store, summary, whatsapp_text
+from gameday.remote_approval import captions, offer_line, states, store, summary
 from gameday.remote_approval import settings as ra_settings
 from gameday.store import loads
 
@@ -52,7 +52,8 @@ def on_job_finished(db, job, status: str, *, meta=None) -> int | None:
     """Queue what this finished job should tell the owner. Returns the new
     offer's id, or None when nothing was offered (neither WhatsApp nor Muse
     on, a video the settings leave out, nothing found, or a failure notice
-    instead). `meta` (a MetaAPI) writes the captions when that is on.
+    instead). `meta` (a MetaAPI) writes the captions when that is on, and
+    the offer's one-line summary.
 
     A game uploaded with the judge login tells the owner nothing: it is never
     offered, and its failure sends no message."""
@@ -124,9 +125,9 @@ def offer(db, *, job_id: int, video_id: int, title: str, clips, config: dict | N
     some of those places is offered with a note of where (summary.snapshot),
     and is never sent there again (commands.queue_publishes).
 
-    With `meta`, Muse Spark writes the captions before the message is queued,
-    so the relay loop sends them with the offer, and, when the offer goes out
-    on WhatsApp, the message's line (whatsapp_text.py). `credit` is the credit line
+    With `meta`, Muse Spark writes the captions (when they are on) and the
+    offer's one-line summary (offer_line.py) before the message is queued, so
+    the relay loop sends them with the offer. `credit` is the credit line
     every caption ends with (credit_line, the one set now when None). It is
     kept on the offer, so the page shows, and the upload posts, the same text
     whatever the setting says by then; Muse Spark is never told it."""
@@ -152,11 +153,11 @@ def offer(db, *, job_id: int, video_id: int, title: str, clips, config: dict | N
     store.audit(db, review_id, "desktop", states.READY_FOR_REVIEW.lower(), summary.ready_text(info))
     if meta is not None and (config["muse_captions"] or config["muse_summary"]):
         write_captions(db, review_id, meta, hint=hint)
-    if meta is not None and whatsapp_text.wanted(config):
+    if meta is not None:
         try:
-            whatsapp_text.write(db, review_id, meta)
+            offer_line.write(db, review_id, meta)
         except Exception as e:  # the counted summary goes instead: an offer never waits on a model
-            store.audit(db, review_id, "desktop", "whatsapp_text_skipped", type(e).__name__)
+            store.audit(db, review_id, "desktop", "offer_line_skipped", type(e).__name__)
     nth = round_no if round_no is not None else len(store.reviews_for_job(db, job_id))
     store.enqueue(db, f"ready:job:{job_id}:{nth}", "ready", review_id=review_id)
     store.move(db, review_id, states.NOTIFICATION_PENDING, actor="desktop")

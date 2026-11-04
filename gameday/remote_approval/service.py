@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from gameday import media
-from gameday.remote_approval import commands, previews, states, store, summary, usage, whatsapp_text
+from gameday.remote_approval import commands, offer_line, previews, states, store, summary, usage
 from gameday.remote_approval import settings as ra_settings
 from gameday.remote_approval.relay import Relay, RelayError
 from gameday.store import media_url
@@ -300,7 +300,7 @@ class _Drop(Exception):
 
 def build_body(db, item: dict) -> dict:
     """What the relay is sent for one outbox row. The captions and the
-    WhatsApp line were written when the offer was made (notifier.offer);
+    offer's line were written when the offer was made (notifier.offer);
     this never calls a model."""
     from gameday.remote_approval import captions
 
@@ -342,8 +342,8 @@ def build_body(db, item: dict) -> dict:
         "fingerprint": review["fingerprint"],
         "expires_at": review["expires_at"],
         "title": review["title"],
-        # After "Ready to review:" in the WhatsApp message: Muse Spark's line, or the counts.
-        "summary_text": whatsapp_text.summary_text(review),
+        # What Muse says and the approval page shows: Muse Spark's line, or the counts.
+        "summary_text": offer_line.summary_text(review),
         # basketball or video: for Muse to say what kind of video it was.
         "video_kind": review["summary"].get("kind") or "",
         "counts": review["summary"].get("counts") or {},

@@ -29,6 +29,8 @@ from gameday.remote_approval import captions, commands, notifier, publishing, se
 from gameday.remote_approval import settings as ra_settings
 
 PIN = "4826"
+#: Muse Spark's one-line summary of an offer of finished_job's plays, as FakeMeta writes it.
+LINE = "5 big plays, led by the poster dunk in the third"
 
 pytestmark = pytest.mark.skipif(not node_ok(), reason="needs Node 22.5+ for the relay")
 
@@ -417,6 +419,34 @@ def test_muse_alone_with_no_whatsapp_number_gets_the_offer_and_its_results(muse_
     assert len(phone.state()["messages"]) == messages  # not one WhatsApp message, start to finish
 
 
+def test_muse_and_the_approval_page_give_muse_sparks_line_for_the_offer(muse_pc):
+    phone, muse, db = muse_pc["phone"], muse_pc["muse"], muse_pc["db"]
+    meta = FakeMeta(db.ledger())
+    job = finished_job(db, muse_pc["dir"], title="Home vs Visitors")
+    review_id = notifier.on_job_finished(db, job, "done", meta=meta)
+    assert [c[1] for c in meta.calls] == ["captions", "offer_line"]
+    muse_pc["tick"]()
+    review = store.get_review(db, review_id)
+    assert review["state"] == states.NOTIFICATION_SENT
+    # What Muse says is ready: the line, in what it reads and in the offer itself.
+    said = muse.rpc("tools/call", {"name": "list_ready_highlights", "arguments": {}})
+    assert said["isError"] is False
+    assert f"1. Home vs Visitors: {LINE}. The link expires at" in said["content"][0]["text"]
+    [offer] = said["structuredContent"]["offers"]
+    assert offer["approval_id"] == review["approval_id"] and offer["summary"] == LINE
+    # Asked for a link with two offers open, Muse names each one by its summary: an offer made
+    # without a Meta key has the counts.
+    other = notifier.on_job_finished(db, finished_job(db, muse_pc["dir"], title="Home vs Away"), "done")
+    muse_pc["tick"]()
+    choices = {c["approval_id"]: c["summary"] for c in muse.tool("get_approval_link")["choices"]}
+    counted = "5 clips: 2 dunks, 1 three, 1 block and 1 other play"
+    assert choices == {review["approval_id"]: LINE, store.get_review(db, other)["approval_id"]: counted}
+    # The approval page shows it under the video's title.
+    token = muse.tool("get_approval_link", approval_id=review["approval_id"])["url"].rsplit("/a/", 1)[1]
+    status, html = phone.open(token)
+    assert status == 200 and f'<h1>Home vs Visitors</h1><p class="muted">{LINE}</p>' in html
+
+
 # ---- the whole app: upload to Instagram, through its own routes and worker ------------------
 
 
@@ -439,11 +469,10 @@ def test_an_uploaded_game_goes_from_the_dashboard_to_the_phone_and_out(pc):
     [review] = app.get("/remote-approval/reviews").json()["reviews"]
     assert review["state"] == states.NOTIFICATION_SENT and review["captions_by"] == "muse-spark-1.3"
     assert review["clips"][0]["thumb_url"].startswith(f"/media/jobs/{job_id}/clips/")
-    # The real relay's WhatsApp message carries the line Muse Spark wrote for it.
-    assert "5 big plays, led by the poster dunk in the third" in json.dumps(phone.last_message())
     token = phone.link_token(phone.last_message())
     _, html = phone.open(token)
     assert "Muse: Poster dunk" in html  # Muse Spark's title on the approval page
+    assert f'<p class="muted">{LINE}</p>' in html  # and its line for the offer, under the video's title
     first = review["clips"][0]["clip_id"]
     status, html = phone.submit(token, [("csrf", csrf_of(html)), ("action", "approve"), ("clip", str(first)),
                                         ("platform", "instagram"), ("confirm", "yes"), ("pin", PIN)])

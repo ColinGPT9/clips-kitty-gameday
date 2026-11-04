@@ -198,15 +198,15 @@ class FakeRelay:
 
 
 def spark_line(prompt: dict) -> str:
-    """FakeMeta's line for an offer's WhatsApp message, from what it was told
-    (gameday/remote_approval/whatsapp_text.py facts)."""
+    """FakeMeta's one-line summary of an offer, from what it was told
+    (gameday/remote_approval/offer_line.py facts)."""
     return f"{prompt['clip_count']} big plays, led by the {prompt['clips'][0]['title'].lower()}"
 
 
 class FakeMeta:
     """The MetaAPI protocol without the network. Muse Spark answers the
-    captions request for exactly the clips it was given, and the WhatsApp
-    line request with spark_line; every call goes on the ledger when one is
+    captions request for exactly the clips it was given, and the offer line
+    request with spark_line; every call goes on the ledger when one is
     given, as the real client does."""
 
     def __init__(self, ledger=None, *, fail: Exception | None = None, cost: float = 0.002):
@@ -231,7 +231,7 @@ class FakeMeta:
         if self.fail is not None:
             raise self.fail
         prompt = json.loads(messages[-1]["content"])
-        if purpose == "whatsapp_text":
+        if purpose == "offer_line":
             return {"line": spark_line(prompt)}
         return {"summary": "A night of big plays.", "clips": [
             {"clip_id": c["clip_id"], "title": f"Muse: {c.get('play') or c.get('moment')}",
@@ -255,6 +255,18 @@ class FakeMeta:
         self.calls.append(("test_key",))
         if self.bad_key:
             raise MetaError("Meta refused the key (401).", status=401)
+
+
+class SaysLine(FakeMeta):
+    """FakeMeta whose Muse Spark answers the offer line request with `line`."""
+
+    def __init__(self, line, **kw):
+        super().__init__(**kw)
+        self.line = line
+
+    def chat_json(self, messages, schema, *, name, purpose, **kw):
+        answer = super().chat_json(messages, schema, name=name, purpose=purpose, **kw)
+        return {"line": self.line} if purpose == "offer_line" else answer
 
 
 class FakePipeline:
