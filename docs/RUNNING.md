@@ -40,6 +40,8 @@ or in a file in git.
 | `WATCH_DIR` | | If set, this folder is watched from the first start. |
 | `MAX_UPLOAD_MB` | `4096` | The biggest upload the dashboard accepts. |
 | `RELAY_URL`, `RELAY_ENROLMENT_KEY` | | Optional. They fill in the relay form in the dashboard. |
+| `PUBLIC_URL` | | Optional. The dashboard's address as people open it, for example `https://203-0-113-7.sslip.io`. With it, tapping a phone alert opens the right page of the dashboard (**Game day** or **Phone offers**). `scripts/setup-lightsail.sh` sets it. |
+| `NTFY_SERVER` | `https://ntfy.sh` | Where phone alerts go: ntfy.sh, or your own ntfy server. It must be `https://` (`http://` only on this computer), because each alert's address holds the secret channel name. Alerts are off until the owner makes a channel in **Setup**. |
 | `FFMPEG`, `FFPROBE` | `ffmpeg`, `ffprobe` | Paths to the programs, if they aren't on `PATH`. |
 | `GAMEDAY_KEEP_TMP` | `0` | `1` keeps each job's scratch files, for debugging. |
 | `LOG_LEVEL` | `INFO` | |
@@ -109,8 +111,9 @@ TODO(measured).
 ## Network
 
 - Inbound: HTTPS to the proxy only.
-- Outbound: HTTPS to `api.meta.ai` (Muse Voice, Muse Spark, SAM 3.1) and to
-  your relay's address. Nothing else. The relay, not the app, talks to the
+- Outbound: HTTPS to `api.meta.ai` (Muse Voice, Muse Spark, SAM 3.1), to
+  your relay's address and, once phone alerts are on, to `NTFY_SERVER`
+  (`ntfy.sh` by default). Nothing else. The relay, not the app, talks to the
   Graph API.
 
 ## One process only

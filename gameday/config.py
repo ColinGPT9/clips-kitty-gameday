@@ -1,8 +1,9 @@
 """The app's settings from the environment (docs/API.md, Environment).
 
-Read once at start into a Config. Nothing here is a secret store: the Meta key
-and the relay's device secret live encrypted in the database (secrets.py), and
-the owner password is either GAMEDAY_PASSWORD or the generated file below.
+Read once at start into a Config. Nothing here is a secret store: the Meta key,
+the relay's device secret and the phone alert topic live encrypted in the
+database (secrets.py), and the owner password is either GAMEDAY_PASSWORD or the
+generated file below.
 The judge login's password is GAMEDAY_JUDGE_PASSWORD; without it there is no
 judge login.
 """
@@ -16,6 +17,7 @@ import secrets as _random
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 log = logging.getLogger("gameday")
 
@@ -24,6 +26,8 @@ JUDGE_USER = "judge"
 PASSWORD_FILE = "owner-password.txt"
 SECRET_KEY_FILE = "secret.key"
 DB_FILE = "gameday.db"
+#: Where phone alerts go unless NTFY_SERVER says otherwise (gameday/notify.py).
+DEFAULT_NTFY_SERVER = "https://ntfy.sh"
 
 
 def _number(env: Mapping[str, str], name: str, default: float, *, low: float, high: float) -> float:
@@ -37,6 +41,26 @@ def _number(env: Mapping[str, str], name: str, default: float, *, low: float, hi
     if not low <= value <= high:
         raise ValueError(f"{name} must be between {low:g} and {high:g}.")
     return value
+
+
+def _address(env: Mapping[str, str], name: str, default: str = "", *, secret_travels: bool = False) -> str:
+    """An https:// address from the environment, without its trailing slash.
+    http:// is taken for an address on this computer, and also anywhere else
+    when nothing secret travels to it (`secret_travels` false)."""
+    raw = str(env.get(name, "") or "").strip().rstrip("/")
+    if not raw:
+        return default
+    try:
+        parts = urlsplit(raw)
+        host = parts.hostname or ""
+        _ = parts.port  # a port that isn't a number raises here
+    except ValueError:
+        parts, host = None, ""
+    plain_ok = parts is not None and parts.scheme == "http" and (not secret_travels or host in LOOPBACK_HOSTS)
+    if (not host or not (parts.scheme == "https" or plain_ok) or parts.username is not None
+            or parts.password is not None or parts.query or parts.fragment):
+        raise ValueError(f"{name} must be an https:// address, like {default or 'https://203-0-113-7.sslip.io'}.")
+    return raw
 
 
 class StartRefused(ValueError):
@@ -63,6 +87,8 @@ class Config:
     keep_tmp: bool = False
     log_level: str = "INFO"
     font: str = ""  # GAMEDAY_FONT, passed through untouched: the engine reads it
+    public_url: str = ""  # PUBLIC_URL: the dashboard's address, for the links in phone alerts
+    ntfy_server: str = DEFAULT_NTFY_SERVER  # NTFY_SERVER: where phone alerts go
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Config:
@@ -90,6 +116,9 @@ class Config:
             keep_tmp=text("GAMEDAY_KEEP_TMP", "0") == "1",
             log_level=(text("LOG_LEVEL", "INFO") or "INFO").upper(),
             font=str(env.get("GAMEDAY_FONT", "") or ""),
+            public_url=_address(env, "PUBLIC_URL"),
+            # The alert topic is in each request's path: never sent in the clear across a network.
+            ntfy_server=_address(env, "NTFY_SERVER", DEFAULT_NTFY_SERVER, secret_travels=True),
         )
         problem = judge_password_problem(config)
         if problem:

@@ -73,6 +73,7 @@ Environment=WATCH_DIR=$WATCH_DIR
 Environment=HOST=127.0.0.1
 Environment=PORT=8080
 Environment=MAX_UPLOAD_MB=$((MAX_GB * 1024))
+Environment=PUBLIC_URL=https://$DOMAIN
 ExecStart=$REPO/.venv/bin/python -m gameday
 Restart=always
 RestartSec=3

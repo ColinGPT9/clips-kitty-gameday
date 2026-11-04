@@ -11,7 +11,7 @@ from fastapi import HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import ClientDisconnect
 
-from gameday import __version__, access, media
+from gameday import __version__, access, media, notify
 from gameday import secrets as secret_store
 from gameday.store import fresh_stages, loads, media_url
 from gameday.types import APP_NAME, MODEL_SAM, MODEL_SPARK, MODEL_VOICE, MODELS, STAGES
@@ -141,6 +141,8 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
             "budget": {"limit_usd": store.budget_usd, "spent_usd": round(store.spent_usd(), 4)},
             "watches": len(store.watches()),
             "upload_limit_mb": config.max_upload_mb,
+            # Whether phone alerts are on: never the topic, which only the answer that makes it holds.
+            "alerts": {"ntfy": bool(notify.saved_topic(store))},
         }
 
     # ---- settings -----------------------------------------------------------
@@ -189,6 +191,39 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
             return {"ok": False, "budget": True, "error": str(e) or "Meta calls are paused by the budget."}
         except MetaError as e:
             return {"ok": False, "error": str(e) or "The key didn't work."}
+        return {"ok": True}
+
+    # ---- phone alerts (notify.py) --------------------------------------------
+    # The owner's alone: none of these is in access.JUDGE_MAY.
+
+    @app.post("/api/alerts/ntfy")
+    def make_alert_channel():
+        """A new topic, replacing any older one. This answer is the only place
+        it is ever sent: it is kept encrypted, and never logged or shown again."""
+        topic = notify.new_topic()
+        store.secrets.set(notify.NTFY_TOPIC, topic)
+        store.add_event("info", "alerts", "A new phone alert channel was made. Subscribe to it in the ntfy app.")
+        return {"topic": topic, "subscribe": notify.subscribe_links(topic, config.ntfy_server),
+                "alerts": {"ntfy": True}}
+
+    @app.delete("/api/alerts/ntfy")
+    def turn_alerts_off():
+        if store.secrets.delete(notify.NTFY_TOPIC):
+            store.add_event("info", "alerts", "Phone alerts were turned off.")
+        return {"alerts": {"ntfy": False}}
+
+    @app.post("/api/alerts/test")
+    def test_alert():
+        topic = notify.saved_topic(store)
+        if not topic:
+            return {"ok": False, "error": "There is no alert channel yet. Make one first."}
+        try:
+            notify.send(topic, notify.TEST_TITLE, "Phone alerts work. You'll get one when a game is ready, and "
+                                                  "when a post goes up or fails.",
+                        click=notify.page_link(config.public_url, "setup"), tags=("bell",),
+                        server=config.ntfy_server)
+        except notify.AlertError as e:
+            return {"ok": False, "error": e.reason}
         return {"ok": True}
 
     # ---- upload -------------------------------------------------------------
