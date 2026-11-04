@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS watches (
 
 -- A game to clip: an upload (a copy in DATA_DIR/uploads) or a file found in
 -- a watched folder, which is only ever read where it is. A watched file is
--- known by its path, size and time: changed, it is a new video.
+-- known by its path, size and time: changed, it is a new video, unless it has
+-- the name and size of a watched file already queued. That is the same game
+-- copied in again, and the watcher skips it (watch/watcher.py).
 CREATE TABLE IF NOT EXISTS videos (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,
@@ -57,6 +59,7 @@ CREATE TABLE IF NOT EXISTS videos (
     created_at REAL NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_found ON videos(path, size, mtime_ns) WHERE source = 'watch';
+CREATE INDEX IF NOT EXISTS idx_videos_found_name ON videos(name, size) WHERE source = 'watch';
 
 CREATE TABLE IF NOT EXISTS jobs (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,6 +80,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at       REAL,
     finished_at      REAL
 );
+CREATE INDEX IF NOT EXISTS idx_jobs_video ON jobs(video_id);
 
 CREATE TABLE IF NOT EXISTS clips (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -482,6 +486,17 @@ class Store:
         return self.conn.execute(
             "SELECT * FROM videos WHERE source = 'watch' AND path = ? AND size = ? AND mtime_ns = ?",
             (path, int(size), int(mtime_ns))).fetchone()
+
+    def clipped_before(self, name: str, size: int) -> int | None:
+        """The job a watched file with this name and size was queued as, in
+        any watch and at any time, or None: a done one if there is one, else
+        the latest. Uploads don't count. A new file with the same name and
+        size is that game copied in again (watch/watcher.py)."""
+        row = self.conn.execute(
+            "SELECT jobs.id FROM videos JOIN jobs ON jobs.video_id = videos.id "
+            "WHERE videos.source = 'watch' AND videos.name = ? AND videos.size = ? "
+            "ORDER BY jobs.state = 'done' DESC, jobs.id DESC LIMIT 1", (name, int(size))).fetchone()
+        return int(row["id"]) if row else None
 
     def set_video_duration(self, video_id: int, duration_s: float) -> None:
         self._write("UPDATE videos SET duration_s = ? WHERE id = ?", (float(duration_s), int(video_id)))
