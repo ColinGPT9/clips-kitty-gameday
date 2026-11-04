@@ -2,8 +2,8 @@
 
 Ported from this week's event branch (where the desktop worker's announce
 step called it). What happens here is database writes, a look at the clip
-files, and at most one Muse Spark request for the captions: never a relay
-call. The pipeline thread must never wait on WhatsApp, and a relay that is
+files, and at most two Muse Spark requests, for the captions and for the
+WhatsApp message's line: never a relay call. The pipeline thread must never wait on WhatsApp, and a relay that is
 down must never fail or slow a job. The relay loop (service.tick) sends what
 this queues.
 
@@ -19,7 +19,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from gameday import access
-from gameday.remote_approval import captions, states, store, summary
+from gameday.remote_approval import captions, states, store, summary, whatsapp_text
 from gameday.remote_approval import settings as ra_settings
 from gameday.store import loads
 
@@ -125,7 +125,8 @@ def offer(db, *, job_id: int, video_id: int, title: str, clips, config: dict | N
     and is never sent there again (commands.queue_publishes).
 
     With `meta`, Muse Spark writes the captions before the message is queued,
-    so the relay loop sends them with the offer. `credit` is the credit line
+    so the relay loop sends them with the offer, and, when the offer goes out
+    on WhatsApp, the message's line (whatsapp_text.py). `credit` is the credit line
     every caption ends with (credit_line, the one set now when None). It is
     kept on the offer, so the page shows, and the upload posts, the same text
     whatever the setting says by then; Muse Spark is never told it."""
@@ -151,6 +152,11 @@ def offer(db, *, job_id: int, video_id: int, title: str, clips, config: dict | N
     store.audit(db, review_id, "desktop", states.READY_FOR_REVIEW.lower(), summary.ready_text(info))
     if meta is not None and (config["muse_captions"] or config["muse_summary"]):
         write_captions(db, review_id, meta, hint=hint)
+    if meta is not None and whatsapp_text.wanted(config):
+        try:
+            whatsapp_text.write(db, review_id, meta)
+        except Exception as e:  # the counted summary goes instead: an offer never waits on a model
+            store.audit(db, review_id, "desktop", "whatsapp_text_skipped", type(e).__name__)
     nth = round_no if round_no is not None else len(store.reviews_for_job(db, job_id))
     store.enqueue(db, f"ready:job:{job_id}:{nth}", "ready", review_id=review_id)
     store.move(db, review_id, states.NOTIFICATION_PENDING, actor="desktop")

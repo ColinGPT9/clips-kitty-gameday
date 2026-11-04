@@ -197,10 +197,17 @@ class FakeRelay:
         return {"revoked": True, "muse": self.muse}
 
 
+def spark_line(prompt: dict) -> str:
+    """FakeMeta's line for an offer's WhatsApp message, from what it was told
+    (gameday/remote_approval/whatsapp_text.py facts)."""
+    return f"{prompt['clip_count']} big plays, led by the {prompt['clips'][0]['title'].lower()}"
+
+
 class FakeMeta:
     """The MetaAPI protocol without the network. Muse Spark answers the
-    captions request for exactly the clips it was given; every call goes on
-    the ledger when one is given, as the real client does."""
+    captions request for exactly the clips it was given, and the WhatsApp
+    line request with spark_line; every call goes on the ledger when one is
+    given, as the real client does."""
 
     def __init__(self, ledger=None, *, fail: Exception | None = None, cost: float = 0.002):
         self.ledger = ledger
@@ -224,6 +231,8 @@ class FakeMeta:
         if self.fail is not None:
             raise self.fail
         prompt = json.loads(messages[-1]["content"])
+        if purpose == "whatsapp_text":
+            return {"line": spark_line(prompt)}
         return {"summary": "A night of big plays.", "clips": [
             {"clip_id": c["clip_id"], "title": f"Muse: {c.get('play') or c.get('moment')}",
              "instagram_caption": f"{c.get('play') or c.get('moment')} from tonight.",

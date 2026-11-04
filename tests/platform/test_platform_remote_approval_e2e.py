@@ -439,6 +439,8 @@ def test_an_uploaded_game_goes_from_the_dashboard_to_the_phone_and_out(pc):
     [review] = app.get("/remote-approval/reviews").json()["reviews"]
     assert review["state"] == states.NOTIFICATION_SENT and review["captions_by"] == "muse-spark-1.3"
     assert review["clips"][0]["thumb_url"].startswith(f"/media/jobs/{job_id}/clips/")
+    # The real relay's WhatsApp message carries the line Muse Spark wrote for it.
+    assert "5 big plays, led by the poster dunk in the third" in json.dumps(phone.last_message())
     token = phone.link_token(phone.last_message())
     _, html = phone.open(token)
     assert "Muse: Poster dunk" in html  # Muse Spark's title on the approval page

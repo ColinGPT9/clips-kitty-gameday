@@ -153,17 +153,20 @@ def test_the_captions_stage_makes_the_offer_with_muse_spark_captions(make_app, m
     captions = job["stages"]["captions"]
     assert captions["state"] == "done"
     assert captions["note"] == "Muse Spark wrote the captions. Offered 5 clips on your phone."
-    assert captions["cost_usd"] == 0.002 and job["stages"]["spark"]["cost_usd"] == 0
+    # The captions and the WhatsApp message's line, both on the ledger as this stage's.
+    assert captions["cost_usd"] == 0.004 and job["stages"]["spark"]["cost_usd"] == 0
     [review] = store.reviews_for_job(app.store, job_id)
     assert review["state"] == states.NOTIFICATION_PENDING and review["title"] == "game"
     assert review["captions"]["model"] == MODEL_SPARK and len(review["captions"]["clips"]) == 5
-    [(_, purpose, called_for, _messages)] = [c for c in meta.calls if c[0] == "chat_json"]
-    assert (purpose, called_for) == ("captions", job_id)
+    calls = [(c[1], c[2]) for c in meta.calls if c[0] == "chat_json"]
+    assert calls == [("captions", job_id), ("whatsapp_text", job_id)]
+    assert [c["purpose"] for c in app.get("/api/usage").json()["recent"]] == ["whatsapp_text", "captions"]
     # The relay loop sends it with Muse Spark's words, and no local path.
     relay = FakeRelay()
     monkeypatch.setattr(service, "client", lambda db: relay)
     app.worker.relay_step()
     [body] = relay.notified
+    assert body["summary_text"] == "5 big plays, led by the poster dunk in the third"
     assert body["clips"][0]["text_source"] == "muse_spark" and body["clips"][0]["title"].startswith("Muse:")
     assert body["clips"][0]["thumb"]  # the engine's thumbnail, made small
     assert str(app.config.data_dir) not in json.dumps(body)
