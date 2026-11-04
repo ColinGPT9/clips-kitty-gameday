@@ -315,6 +315,30 @@
           </div>
         </section>
       </div>
+
+      <!-- Optional, so it isn't counted, and it stays in view when the steps above fold away. -->
+      <section class="step" id="step-alerts" data-done="false">
+        <button type="button" class="step-head" aria-expanded="true" aria-controls="body-alerts"><span class="badge" aria-hidden="true">6</span><span class="step-name">6. Phone alerts</span><span class="badge-tag">Optional</span><span class="caret" aria-hidden="true"></span></button>
+        <p class="step-state" id="alerts-state"></p>
+        <div class="step-body" id="body-alerts">
+          <p class="hint">A buzz on your phone when a game is ready or didn't finish, and when a post goes up or fails, through <a href="https://ntfy.sh/" target="_blank" rel="noopener noreferrer">ntfy ↗</a>. Free app for iPhone and Android: no account.</p>
+          <div class="strip" id="alerts-secret" hidden>
+            <p class="label">Your alert channel</p>
+            <p class="mono key wrap" id="alerts-topic"></p>
+            <div class="btns"><button type="button" class="btn small" id="alerts-copy">Copy</button></div>
+            <p class="hint">In the ntfy app, tap +, paste this name, Subscribe.</p>
+            <p class="hint">On your phone now? <a id="alerts-app-link" href="#">Open it in the ntfy app</a> · <a id="alerts-web-link" href="#" target="_blank" rel="noopener noreferrer">Open it on the web ↗</a></p>
+            <p class="warn-line small">Shown once. Anyone with this name can read your alerts: keep it to yourself.</p>
+            <div class="btns"><button type="button" class="btn small primary" id="alerts-done">Done</button></div>
+          </div>
+          <div class="btns">
+            <button type="button" class="btn small primary" id="alerts-make">Make my alert channel</button>
+            <button type="button" class="btn small" id="alerts-test" hidden>Send a test alert</button>
+            <button type="button" class="btn small" id="alerts-off" hidden>Turn off</button>
+          </div>
+          <p class="note" id="alerts-note" role="status"></p>
+        </div>
+      </section>
     </div>
 
     <div class="card" id="step-approvals">

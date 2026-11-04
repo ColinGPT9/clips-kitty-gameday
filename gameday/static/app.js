@@ -1034,7 +1034,9 @@
       { name: 'Facebook', done: facebook },
       { name: 'Phone approval', done: approvals },
     ];
-    return { meta, relay, pin, muse, facebook, instagram, approvals, required, allDone: required.every((s) => s.done) };
+    // Optional: never in `required`, so the count, the rail and the badges leave it out.
+    const alerts = !!(st.alerts && st.alerts.ntfy);
+    return { meta, relay, pin, muse, facebook, instagram, approvals, alerts, required, allDone: required.every((s) => s.done) };
   }
 
   /** A step's badge, status line, and whether it is open: a done step folds to its status
@@ -1129,6 +1131,13 @@
     show('accounts-wait', waiting);
     for (const id of ['fb-connect', 'fb-disconnect', 'ig-disconnect', 'accounts-check']) $(id).disabled = noRelay;
 
+    // 6. Phone alerts (optional)
+    paintStep('step-alerts', steps.alerts, steps.alerts ? 'On: alerts go to your phone.' : 'Off.');
+    setText('alerts-make', steps.alerts ? 'Make a new channel' : 'Make my alert channel');
+    $('alerts-make').classList.toggle('primary', !steps.alerts);
+    show('alerts-test', steps.alerts);
+    show('alerts-off', steps.alerts);
+
     // Publishing
     const why = (S.ra && S.ra.can_enable_remote_approval) || '';
     const box = $('approvals');
@@ -1216,13 +1225,15 @@
 
   function wireSetup() {
     $('steps-toggle').addEventListener('click', () => { S.showSteps = !S.showSteps; writeStore(S.showSteps); renderSetup(); });
-    $('steps').addEventListener('click', (e) => {
+    const toggleStep = (e) => {
       const head = e.target.closest('.step-head');
       if (!head) return;
       const step = head.closest('.step');
       S.stepOpen[step.id] = head.getAttribute('aria-expanded') !== 'true';
       renderSetup();
-    });
+    };
+    $('steps').addEventListener('click', toggleStep);
+    $('step-alerts').addEventListener('click', toggleStep); // outside the steps that fold away
 
     // 1. Meta key
     $('meta-key').addEventListener('input', () => { $('meta-save').disabled = !$('meta-key').value.trim(); });
@@ -1382,6 +1393,64 @@
       if (((settingsRA() || {}).accounts || {}).facebook && settingsRA().accounts.facebook.connected) S.connectPending = false;
       note('accounts-note', 'Checked with the relay.', 'ok');
     }));
+
+    // 6. Phone alerts: the channel's name is in the one answer that makes it, and shown only until Done.
+    const hideChannel = () => {
+      setText('alerts-topic', '');
+      $('alerts-app-link').href = '#';
+      $('alerts-web-link').href = '#';
+      show('alerts-secret', false);
+    };
+    $('alerts-make').addEventListener('click', async (e) => {
+      const button = e.currentTarget;
+      const had = !!(S.status && S.status.alerts && S.status.alerts.ntfy);
+      if (had && !(await confirmInline(button, 'Your phone gets no alerts until you subscribe to the new name.', 'Make a new channel'))) return;
+      act(button, 'alerts-note', async () => {
+        const got = await api('POST', '/api/alerts/ntfy');
+        const topic = (got && got.topic) || '';
+        if (S.status) S.status.alerts = (got && got.alerts) || { ntfy: !!topic };
+        S.stepOpen['step-alerts'] = true; // the name is inside the step: keep it open while it shows
+        if (!topic) { note('alerts-note', "The app didn't send a channel name. Try again.", 'bad'); return; }
+        const links = (got && got.subscribe) || {};
+        const web = safeUrl(links.web, true);
+        const inApp = /^ntfy:\/\/[^\s"'<>]+$/.test(String(links.app || '')) ? String(links.app) : '';
+        setText('alerts-topic', topic);
+        $('alerts-web-link').href = web || '#';
+        show('alerts-web-link', !!web);
+        $('alerts-app-link').href = inApp || '#';
+        show('alerts-app-link', !!inApp);
+        show('alerts-secret', true);
+        note('alerts-note', '');
+      });
+    });
+    $('alerts-copy').addEventListener('click', async (e) => {
+      const button = e.currentTarget;
+      if (await copyText($('alerts-topic').textContent, 'alerts-note')) {
+        setText(button, 'Copied');
+        button.classList.add('sky-text');
+        window.setTimeout(() => { setText(button, 'Copy'); button.classList.remove('sky-text'); }, 2000);
+      }
+    });
+    $('alerts-done').addEventListener('click', () => {
+      hideChannel();
+      note('alerts-note', 'The name is no longer shown here. Press Send a test alert to check your phone.', 'ok');
+    });
+    $('alerts-test').addEventListener('click', (e) => act(e.currentTarget, 'alerts-note', async () => {
+      note('alerts-note', 'Sending…', 'info');
+      const got = await api('POST', '/api/alerts/test');
+      if (got && got.ok) note('alerts-note', 'Sent. It should be on your phone in a few seconds.', 'ok');
+      else note('alerts-note', "The alert wasn't sent: " + ((got && got.error) || 'no reason given.'), 'bad');
+    }));
+    $('alerts-off').addEventListener('click', async (e) => {
+      const button = e.currentTarget;
+      if (!(await confirmInline(button, 'Turn off phone alerts?', 'Turn off'))) return;
+      act(button, 'alerts-note', async () => {
+        const got = await api('DELETE', '/api/alerts/ntfy');
+        if (S.status) S.status.alerts = (got && got.alerts) || { ntfy: false };
+        hideChannel();
+        note('alerts-note', 'Off. You can remove the subscription from the ntfy app too.', 'ok');
+      });
+    });
 
     // Publishing
     $('approvals').addEventListener('change', (e) => act(e.currentTarget, 'approvals-note', async () => {
