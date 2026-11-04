@@ -3,7 +3,9 @@
  * Plain JavaScript, no build step. It talks only to the app's own routes
  * (docs/API.md): /api/* and /remote-approval/*. The browser handles Basic
  * auth; every request that changes something sends X-Gameday-Action: 1.
- * Nothing is built from HTML strings: text goes in with textContent.
+ * Signed in as the judge, the page hides Setup and every control the judge
+ * login can't use. Nothing is built from HTML strings: text goes in with
+ * textContent.
  */
 'use strict';
 
@@ -430,20 +432,24 @@
 
   function viewFromHash() {
     const name = (window.location.hash || '').replace(/^#/, '').split('/')[0];
-    return VIEWS.includes(name) ? name : 'gameday';
+    return VIEWS.includes(name) && !(name === 'setup' && isJudge()) ? name : 'gameday';
   }
 
   function showView(name) {
     if (S.view !== name) window.scrollTo(0, 0);
+    paintView(name);
+    closeMenu(false);
+    renderAll();
+    loadForView(true);
+  }
+
+  function paintView(name) {
     S.view = name;
     for (const view of VIEWS) show('view-' + view, view === name);
     for (const link of document.querySelectorAll('.nav-item')) {
       if (link.dataset.view === name) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     }
-    closeMenu(false);
-    renderAll();
-    loadForView(true);
   }
 
   function openMenu() {
@@ -475,11 +481,36 @@
   }
 
   function renderAll() {
+    renderRole();
     renderShell();
     renderGameDay();
     renderSetup();
     if (S.view === 'offers') renderOffersHead();
     if (S.view === 'usage') renderUsage();
+  }
+
+  // ---- the judge login ------------------------------------------------------------------
+
+  /** Signed in as the judge (GET /api/status "role"). Until the app has answered, the
+   *  page is the owner's: the app refuses the judge whatever the page shows. */
+  function isJudge() {
+    return !!(S.status && S.status.role === 'judge');
+  }
+
+  /** Whether this login may cancel or retry `job`: the judge only the games it uploaded. */
+  function canTouch(job) {
+    return !isJudge() || job.created_by === 'judge';
+  }
+
+  /** The judge sees no Setup and no control it can't use (CSS hides .owner-only). */
+  function renderRole() {
+    const judge = isJudge();
+    document.body.classList.toggle('judge-view', judge);
+    show('judge-line', judge);
+    if (judge && S.view === 'setup') {
+      window.history.replaceState(null, '', '#gameday');
+      paintView('gameday');
+    }
   }
 
   // ---- sidebar, top bar, header pills -------------------------------------------------
@@ -549,7 +580,7 @@
 
   function renderGameDay() {
     const steps = setupSteps();
-    if (steps && !steps.allDone) {
+    if (steps && !steps.allDone && !isJudge()) {
       const left = steps.required.filter((s) => !s.done).map((s) => s.name);
       setText('setup-callout-text', `Setup isn't finished: ${left.join(', ')}.`);
       show('setup-callout', true);
@@ -591,11 +622,12 @@
       seg.className = 'seg ' + state;
     }
     setText('now-total', `Estimated cost so far: ${usd(job.cost_usd, true)}`);
-    const sig = `${job.id}:${job.state}`;
+    const mine = canTouch(job);
+    const sig = `${job.id}:${job.state}:${mine}`;
     const box = $('now-actions');
-    if (box.dataset.sig !== sig || !box.children.length) {
+    if (box.dataset.sig !== sig || (mine && !box.children.length)) {
       box.dataset.sig = sig;
-      box.replaceChildren(h('button', { type: 'button', class: 'btn small', 'data-act': 'job-cancel', 'data-id': job.id, text: 'Cancel' }));
+      box.replaceChildren(...(mine ? [h('button', { type: 'button', class: 'btn small', 'data-act': 'job-cancel', 'data-id': job.id, text: 'Cancel' })] : []));
     }
     renderWarnings($('now-warnings'), job.warnings || []);
   }
@@ -647,7 +679,7 @@
       show(section, list.length > 0);
       setText(section.querySelector('.group-count'), `(${list.length})`);
       keyed(section.querySelector('.jobs'), list, (j) => j.id,
-        (j) => JSON.stringify([j.state, j.stage, j.message, j.clips, j.cost_usd, j.warnings, j.error, j.finished_at, Math.floor(Date.now() / 60000)]), buildJob);
+        (j) => JSON.stringify([j.state, j.stage, j.message, j.clips, j.cost_usd, j.warnings, j.error, j.finished_at, canTouch(j), Math.floor(Date.now() / 60000)]), buildJob);
     }
     syncClipJobs();
   }
@@ -660,8 +692,9 @@
     if (job.state === 'queued') line = 'Waiting';
     const actions = [];
     const button = (act, text, primary) => h('button', { type: 'button', class: 'btn small' + (primary ? ' primary' : ''), 'data-act': act, 'data-id': job.id, text });
-    if (job.state === 'queued' || job.state === 'running') actions.push(button('job-cancel', 'Cancel'));
-    if (job.state === 'failed' || job.state === 'cancelled') actions.push(button('job-retry', 'Retry'));
+    const mine = canTouch(job);
+    if (mine && (job.state === 'queued' || job.state === 'running')) actions.push(button('job-cancel', 'Cancel'));
+    if (mine && (job.state === 'failed' || job.state === 'cancelled')) actions.push(button('job-retry', 'Retry'));
     if (job.clips > 0) actions.push(button('job-clips', 'Clips', false));
     return h('li', { class: 'job', 'data-state': job.state },
       h('span', { class: 'job-glyph', title: JOB_WORDS[job.state] || job.state, text: JOB_GLYPHS[job.state] || '•' }),
@@ -676,6 +709,7 @@
           h('span', { class: 'chip', text: `Game ${job.id}` }),
           video.duration_s ? h('span', { class: 'chip', text: clock(video.duration_s) }) : null,
           h('span', { class: 'chip', text: `added ${ago(job.created_at)}` }),
+          job.created_by === 'judge' ? h('span', { class: 'chip', title: "Uploaded with the judge login: not offered on the phone", text: 'judge login' }) : null,
           h('span', { class: 'chip', text: `${usd(job.cost_usd, true)} est.` }))),
       h('div', { class: 'job-actions' }, actions));
   }
@@ -887,9 +921,13 @@
 
   function renderOffersHead() {
     const set = settingsRA();
-    show('offers-off', !!set && set.registered && !set.remote_approvals);
+    const judge = isJudge();
+    setText('offers-sub', judge ? "Clips offered on the owner's phone, and what got posted."
+      : 'Clips waiting for your OK on your phone, and what got posted.');
+    show('offers-off', !judge && !!set && set.registered && !set.remote_approvals);
     let phone = '';
-    if (!S.ra) phone = S.raError ? 'Phone approval: ' + S.raError : 'Checking…';
+    if (judge) phone = "Games uploaded with the judge login aren't offered on the phone.";
+    else if (!S.ra) phone = S.raError ? 'Phone approval: ' + S.raError : 'Checking…';
     else if (!set.registered) phone = 'Not connected to a relay yet. Connect one in Setup.';
     else {
       phone = set.muse && set.muse.enabled ? `Muse doesn't message you: ask it "What highlights are ready?" to get the link.`
@@ -912,7 +950,7 @@
     renderOffersHead();
     const reviews = S.reviews || [];
     show('offers-empty', S.reviews !== null && !reviews.length);
-    keyed($('offers-list'), reviews, (r) => r.id, (r) => JSON.stringify(r), buildOffer);
+    keyed($('offers-list'), reviews, (r) => r.id, (r) => JSON.stringify([r, isJudge()]), buildOffer);
   }
 
   function buildOffer(review) {
@@ -926,10 +964,11 @@
     if (review.state === 'DEFERRED' && review.remind_at) line2.push(`put aside until ${at(review.remind_at)}`);
     const buttons = [];
     const button = (what, text) => h('button', { type: 'button', class: 'btn small', 'data-act': 'offer', 'data-what': what, 'data-id': review.id, text });
-    if (review.can_cancel) buttons.push(button('cancel', 'Cancel'));
-    if (review.can_retry) buttons.push(button('retry', 'Retry'));
-    if (review.can_ask_again) buttons.push(button('ask-again', 'Ask again'));
-    if (review.can_resend) buttons.push(button('resend', 'Send again'));
+    const owner = !isJudge(); // the offers are the owner's to act on
+    if (owner && review.can_cancel) buttons.push(button('cancel', 'Cancel'));
+    if (owner && review.can_retry) buttons.push(button('retry', 'Retry'));
+    if (owner && review.can_ask_again) buttons.push(button('ask-again', 'Ask again'));
+    if (owner && review.can_resend) buttons.push(button('resend', 'Send again'));
     const posted = ((review.results || {}).clips || []).map((clip) => h('p', { class: 'offer-line' },
       (clip.title || `Clip ${clip.clip_id}`) + ': ',
       (clip.posts || []).map((post) => {
