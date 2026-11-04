@@ -1,8 +1,8 @@
 # Test log
 
-Runs are added here as they happen, newest last. Every number is measured
-on the run it describes: nothing is estimated, rounded up or carried over
-from another run. A run that faked Meta's servers says so in its heading;
+Runs are added here as they happen, newest last. Every number was measured
+on the run it describes, and nothing is carried over from another run. Costs
+are the app's estimates from Meta's published prices. A run that faked Meta's servers says so in its heading;
 anything else called Meta's real services.
 
 Each run gives:
@@ -64,7 +64,7 @@ Each run gives:
     The 0% clip is the celebration after the buzzer, where it followed the players.
   - Disk: the game was 138 MB, and its clips came to 173 MB.
 - **Tests at this commit (CI):**
-  - 415 Python tests on Ubuntu and Windows (4 live tests left out).
+  - 415 Python tests in CI (4 live tests left out).
   - 105 relay tests.
   - ruff and the provenance check, both clean.
 

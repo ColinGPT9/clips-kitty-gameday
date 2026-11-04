@@ -2,9 +2,9 @@
 
 [![Clips Kitty Game Day: watch the 2:50 demo on YouTube](docs/media/demo.gif)](https://youtu.be/1_QXVlY6cqE)
 
-**Highlights posted while the game is still trending.** Meta's models cut
-vertical clips that follow the ball, and nothing goes out to Instagram or
-Facebook until you approve it on your phone.
+**Highlights posted while the game is still trending.** Meta's models pick
+the plays and follow the ball, ffmpeg cuts them into vertical clips, and
+nothing goes out to Instagram or Facebook until you approve it on your phone.
 
 - **[Watch the 2:50 demo on YouTube](https://youtu.be/1_QXVlY6cqE)**
 - **Try it, with no account to make:** https://18-190-220-192.sslip.io, user
@@ -39,7 +39,7 @@ people are still talking about it.
 | The usual way: hours | With Game Day: minutes |
 |---|---|
 | The footage gets recorded | The first quarter lands in a shared folder |
-| Staff review it | Meta's models find the plays and cut them |
+| Staff review it | Meta's models find the plays; ffmpeg cuts them |
 | An editor cuts it at a computer | You approve each post on your phone |
 | Posted hours later, after the buzz | Posted while the game is still trending |
 
@@ -61,7 +61,8 @@ people are still talking about it.
   4-minute piece of a game went into the shared folder, the server found it
   by itself, and 4 vertical clips were ready about six minutes after the
   upload. One went out on Instagram and Facebook from a phone
-  ([TEST_LOG.md](docs/TEST_LOG.md)).
+  ([TEST_LOG.md](docs/TEST_LOG.md)). A whole 45-minute game took about 14
+  minutes on the $24-a-month server, for about $0.80 of Meta usage.
 - **Build for Your World:** clipping is the world I know. I built Clips Kitty
   for streamers before this event, and Game Day brings Meta's models into the
   job of a team's social media manager.
@@ -78,7 +79,7 @@ people are still talking about it.
     don't have.
   - **SAM 3.1** (hosted by Meta) finds the ball through each play, so the 9:16
     crop follows the action. Every clip says how much of it followed the ball.
-- **Muse, Meta's agent app,** reaches the app through a custom connector I
+- **Muse, Meta's agent app,** reaches your relay through a custom connector I
   built: an MCP server with six tools. Muse says what's ready, hands over the
   approval link and says what got posted. No tool can approve or post.
 - **Meta's Graph API** posts Instagram Reels and Facebook Page Reels.
@@ -93,8 +94,8 @@ people are still talking about it.
 
 - **Nothing posts without you:** the approval page, the confirm box and your
   PIN. The PIN is never given to Muse or any assistant.
-- **The Meta tokens never touch the server.** Meta's app secret and the
-  account tokens live only on the relay. The relay never calls the app; the
+- **The Instagram and Facebook tokens never touch the server.** Meta's app
+  secret and the account tokens live only on the relay. The relay never calls the app; the
   app only calls out.
 - **Every Meta call is budgeted:** it checks a spending limit first and is
   logged with its estimated cost. The dashboard shows each stage's time and
@@ -109,7 +110,7 @@ people are still talking about it.
 - **Tested:** 571 Python tests pass in CI on Windows (568 on Ubuntu, where 3
   Windows-only tests are skipped) and 105 relay tests. CI also runs a check
   that fails on any AI other than Meta's, and a provenance check that fails on
-  any code from before the event. [SECURITY.md](docs/SECURITY.md) covers
+  any five-line block of code shared with Clips Kitty from before the event. [SECURITY.md](docs/SECURITY.md) covers
   what protects each step.
 
 ### Demo
@@ -127,7 +128,7 @@ people are still talking about it.
 | Kind | Parts |
 |---|---|
 | **Meta model calls (AI)** | Muse Voice Transcribe (`muse-voice-transcribe-1.0`), Muse Spark (`muse-spark-1.3`) and SAM 3.1 (`sam-3.1`, hosted by Meta), through the Meta Model API. Nothing else in the app runs AI. |
-| **Meta apps and platforms** | Muse, Meta's agent app (it asks the app what's ready, through the custom connector). The Instagram Graph API and Facebook Page Reels (posting), and Facebook Login for Business (connecting the Page): not AI. |
+| **Meta apps and platforms** | Muse, Meta's agent app (Meta AI, run by Meta: it asks your relay what's ready, through the custom connector). The Instagram Graph API and Facebook Page Reels (posting), and Facebook Login for Business (connecting the Page): not AI. |
 | **Regular services and tools (not AI)** | AWS Lightsail (the server), sslip.io (its address), Caddy with a Let's Encrypt certificate (HTTPS), Cloudflare Workers with D1 and KV (the phone relay and approval page), ffmpeg (cutting and rendering), SQLite, Python and FastAPI. Optional: Google Drive with rclone (the shared folder), and ntfy (phone alerts). |
 
 `tests/test_meta_only.py` fails the build if any other AI package, import or
@@ -138,7 +139,6 @@ model host appears in the app.
 ```mermaid
 flowchart TD
     subgraph LEGEND["Legend"]
-        direction LR
         L1["Meta AI"]:::metaai
         L2["Meta platform, not AI"]:::metaplat
         L3["Regular service or tool, not AI"]:::regular
@@ -172,7 +172,7 @@ flowchart TD
     FB["Facebook Page Reels"]:::metaplat
 
     IN --> V --> S --> M --> R --> O
-    O -->|"alert"| N --> AL
+    O --->|"alert"| N --> AL
     O -->|"signed, outbound only"| Q
     Q --> MU
     MU -->|"the approval link"| AP
@@ -256,8 +256,8 @@ It runs as one process with one data folder, behind HTTPS. On a fresh Ubuntu
 - [docs/RUNNING.md](docs/RUNNING.md): what any host needs (packages,
   environment, port, the data to keep, uploads, network).
 
-AWS (the server) and Cloudflare (the relay) only run this project's own code.
-Neither provides any AI here: no AWS or Cloudflare AI service is called. The
+AWS (the server) and Cloudflare (the relay) provide no AI here: no AWS or
+Cloudflare AI service is called. The
 only models are the three Meta models above.
 
 ## Phone approval

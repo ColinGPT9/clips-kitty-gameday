@@ -1,4 +1,4 @@
-# Submission draft: Clips Kitty Game Day
+# Submission: Clips Kitty Game Day
 
 **Tagline:** Give it a basketball game: Meta's models cut vertical
 highlights that follow the ball, and nothing is posted until you approve it
@@ -56,8 +56,8 @@ each post on your phone. It goes out while the game is still trending.
    9:16 clips whose crop follows it.
 3. When the game is done, the clips are offered on your phone. With phone
    alerts on, an alert says so, led by Muse Spark's one-line summary. Ask
-   Muse what's ready (it doesn't message you first), or look at the
-   dashboard, and Muse hands you the approval link.
+   Muse what's ready, and it hands you the approval link. The dashboard
+   shows the offer too.
 4. On the approval page you watch them, tick the ones you want and where
    they go, confirm, and enter your PIN. Only then are they posted, as
    Instagram Reels and Facebook Page Reels, through Meta's Graph API.
@@ -86,7 +86,7 @@ anything but these three. ffmpeg cuts and renders; it is a tool, not a model.
 | Kind | Parts |
 |---|---|
 | **Meta model calls (AI)** | Muse Voice Transcribe (`muse-voice-transcribe-1.0`), Muse Spark (`muse-spark-1.3`) and SAM 3.1 (`sam-3.1`, hosted by Meta), through the Meta Model API. Nothing else in the app runs AI. |
-| **Meta apps and platforms** | Muse, Meta's agent app (it asks the app what's ready, through the custom connector). The Instagram Graph API and Facebook Page Reels (posting), and Facebook Login for Business (connecting the Page): not AI. |
+| **Meta apps and platforms** | Muse, Meta's agent app (Meta AI, run by Meta: it asks your relay what's ready, through the custom connector). The Instagram Graph API and Facebook Page Reels (posting), and Facebook Login for Business (connecting the Page): not AI. |
 | **Regular services and tools (not AI)** | AWS Lightsail (the server), sslip.io (its address), Caddy with a Let's Encrypt certificate (HTTPS), Cloudflare Workers with D1 and KV (the phone relay and approval page), ffmpeg (cutting and rendering), SQLite, Python and FastAPI. Optional: Google Drive with rclone (the shared folder), and ntfy (phone alerts). |
 
 ## Safety
@@ -110,7 +110,7 @@ More in [SECURITY.md](SECURITY.md).
   - Cost: about $0.65 of Meta usage for the game. Muse Voice $0.07, Muse
     Spark $0.02, SAM 3.1 $0.56.
   - Ball-following: in the 7 clips of live play, SAM 3.1 kept the 9:16
-    window on the ball 72-89% of the time. The 8th clip, the celebration
+    window on the ball 72-89% of the time. The other clip, the celebration
     after the buzzer, followed the players.
   - Details in [TEST_LOG.md](TEST_LOG.md).
 - **The HD demo game (3 Nov 2026), the same way:** the second half of Navy
@@ -168,18 +168,18 @@ SAM 3.1, and E-BARD, a YOLOv8n detector trained on basketball.
 
 - An AI reviewer checked the ball calls on the disagreements. It is outside
   the app and was used for this test only.
+- The test ran outside this repository, and its frames and results aren't in it.
 - The app itself only ever calls SAM 3.1. E-BARD ran in a separate setup for this test only.
 - E-BARD (https://github.com/GabrieleGiudic/E-BARD), used unmodified under CC BY 4.0.
 
 **Next: ball tracking trained for basketball.** SAM 3.1 still found no ball
 on about 40% of these frames. The next step is to fine-tune a Meta vision
-model, Muse Glimmer, on a dataset of basketball games. That needs more time
-and a bigger GPU than this project had.
+model, Muse Glimmer, on a dataset of basketball games. I didn't have the time
+this week, or access to a big enough GPU.
 
 **Next: WhatsApp alerts.** The relay has WhatsApp code from the event
 branch, tested only against a fake Meta. The app doesn't use WhatsApp.
-- On the night of 3 Nov I set it up with Meta's WhatsApp test number. The
-  token, the webhook and my own phone as a recipient were all in place.
+- On the night of 3 Nov I set it up with Meta's WhatsApp test number.
 - Meta then locked the new WhatsApp Business Account (error 131031) before
   the first message went out, so I couldn't launch with it in time.
 - The entry ships with Muse and the approval page as the phone flow, plus a

@@ -4,41 +4,58 @@ Meta's pieces are in blue.
 
 ```mermaid
 flowchart TD
-    F["Game video<br/>uploaded, or copied into a watched folder"]
-    subgraph APP["The app: one Python process"]
-        V["Muse Voice<br/>the commentary, with times"]
-        S["Muse Spark<br/>picks the plays · titles · captions<br/>each offer's one-line summary"]
-        M["SAM 3.1<br/>finds the ball in each play"]
-        R["ffmpeg<br/>cuts and renders each clip at 9:16"]
-        O["The offer<br/>the game's best clips"]
-        C["Checks the approval<br/>sends the approved files"]
+    subgraph LEGEND["Legend"]
+        L1["Meta AI"]:::metaai
+        L2["Meta platform, not AI"]:::metaplat
+        L3["Regular service or tool, not AI"]:::regular
     end
-    subgraph RL["Your relay: one Cloudflare Worker"]
-        Q["Offers · the PIN check · Meta's tokens"]
+
+    IN["Game footage<br/>a shared folder: Google Drive, synced read-only<br/>or an upload on the dashboard"]:::regular
+
+    subgraph APP["The app: one Python process, on an AWS Lightsail server"]
+        V["Muse Voice Transcribe<br/>the commentary, with times"]:::metaai
+        S["Muse Spark<br/>picks the plays · titles · captions<br/>the offer's one-line summary"]:::metaai
+        M["SAM 3.1<br/>finds the ball in each play"]:::metaai
+        R["ffmpeg<br/>cuts each clip at 9:16"]:::regular
+        O["The offer<br/>the game's best clips"]:::regular
+        C["Sends the approved clips"]:::regular
     end
-    subgraph PH["On your phone"]
-        MU["Muse<br/>what's ready · the link · what got posted"]
-        AP["The approval page<br/>clips · places · confirm · PIN"]
+
+    N["ntfy<br/>the phone alert"]:::regular
+
+    subgraph RELAY["Your relay: a Cloudflare Worker"]
+        Q["Offers · the PIN check · Meta's tokens"]:::regular
     end
-    G["Graph API"]
-    IG["Instagram Reels"]
-    FB["Facebook Page Reels"]
-    F --> V --> S --> M --> R --> O
-    O -->|signed, outbound only| Q
+
+    subgraph PHONE["Your phone"]
+        AL["Highlights ready<br/>with Muse Spark's line"]:::regular
+        MU["Muse, Meta's agent app<br/>what's ready · the link · what got posted"]:::metaai
+        AP["The approval page<br/>watch · tick · confirm · PIN"]:::regular
+    end
+
+    G["Graph API"]:::metaplat
+    IG["Instagram Reels"]:::metaplat
+    FB["Facebook Page Reels"]:::metaplat
+
+    IN --> V --> S --> M --> R --> O
+    O --->|"alert"| N --> AL
+    O -->|"signed, outbound only"| Q
     Q --> MU
-    MU -->|the link| AP
-    AP -->|approve, with the PIN| Q
-    Q -.->|the app collects the decision| C
-    C -->|through the relay| G
+    MU -->|"the approval link"| AP
+    AP -->|"approve, with the PIN"| Q
+    Q -.->|"the app collects the decision"| C
+    C -->|"through the relay"| G
     G --> IG
     G --> FB
-    classDef meta fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
-    class V,S,M,MU,G,IG,FB meta
+
+    classDef metaai fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
+    classDef metaplat fill:#DCE8FF,stroke:#0866FF,color:#0B2A66
+    classDef regular fill:#EEF0F3,stroke:#6B7280,color:#111827
 ```
 
-**Blue: Meta's models and products.** The models are Muse Voice, Muse Spark
-and SAM 3.1, the only AI this app calls. The products are Muse, the Graph
-API, Instagram and Facebook.
+**Blue is Meta AI:** the three models the app calls, and Muse. **Light blue
+is a Meta platform** (the Graph API, Instagram and Facebook). **Grey is a
+regular service or tool**, with no AI in it.
 
 ## The parts
 
@@ -112,8 +129,9 @@ Muse Spark, SAM 3.1, 9:16 and Captions.
    were two.
 7. **The offer.** With **Let me approve publishing from my phone** on, the
    app sends the offer to the relay, signed. The relay keeps it for Muse.
-   Muse doesn't message the owner: they ask it what's ready (or set a
-   reminder in Muse), and the dashboard shows the offer too.
+   Muse doesn't message the owner: they ask it what's ready, and the
+   dashboard shows the offer too. With Phone alerts on, the app also
+   pushes an ntfy alert led by Muse Spark's line.
 8. **The phone decides.** On the approval page, the owner watches the clips,
    ticks the ones to post and where, confirms, and enters the PIN. Muse can
    hand over the link, but can't approve.
