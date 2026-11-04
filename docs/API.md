@@ -137,7 +137,7 @@ never alerts):
 
 | When | Title | Message | Opens |
 |---|---|---|---|
-| A game finishes with clips | `<video name>: 5 highlights ready` | The best clip's title, then "Ask Muse what's ready, or open Phone offers." if it was offered on the phone, else "Open Game day to watch them." | Game day |
+| A game finishes with clips | `<video name>: 5 highlights ready` | Offered on the phone: Muse Spark's one-line summary of the offer (the best clip's title when it wrote none), then "Ask Muse what's ready, or open Phone offers." Otherwise the best clip's title, then "Open Game day to watch them." | Game day |
 | A game fails | `Game didn't finish: <video name>` | The error, with any file path cut to the file's name | Game day |
 | An approval's uploads have all finished | `Posted to Instagram + Facebook` (the places that worked), or `Posting failed` | The clips' titles, and why a post didn't go up, with Meta's error code | Phone offers |
 

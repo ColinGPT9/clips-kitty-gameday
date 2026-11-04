@@ -21,13 +21,13 @@ import pytest
 import requests
 from conftest import ACTION, VIDEO_BYTES
 from fastapi.testclient import TestClient
-from platform_fakes import FakePipeline, FakeRelay, broken_pipeline, sign_command, switch_on
+from platform_fakes import FakeMeta, FakePipeline, FakeRelay, SaysLine, broken_pipeline, sign_command, switch_on
 
 from gameday import notify
 from gameday.config import Config
 from gameday.publish.errors import PublishError
 from gameday.remote_approval import publishing, service, store
-from gameday.types import PipelineError
+from gameday.types import MetaError, PipelineError
 
 PUBLIC_URL = "https://203-0-113-7.sslip.io"
 JUDGE_PASSWORD = "judge-password-for-tests"
@@ -291,6 +291,39 @@ def test_a_game_offered_on_the_phone_says_to_ask_muse(alerting, ntfy):
     [alert] = sent(app, ntfy)
     assert alert["title"] == "game: 5 highlights ready"
     assert alert["body"] == "Poster dunk in the third\nAsk Muse what's ready, or open Phone offers."
+
+
+def test_muse_sparks_line_for_the_offer_says_whats_ready(alerting, ntfy):
+    app = alerting()
+    app.worker.meta_factory = lambda: FakeMeta(app.store.ledger())
+    switch_on(app.store, whatsapp=False, muse=True)
+    channel(app)
+    job_id = upload(app.client)
+    app.worker.run_next_job()
+    [alert] = sent(app, ntfy)
+    [review] = store.reviews_for_job(app.store, job_id)
+    line = review["summary"]["offer_line"]["line"]  # the offer's summary: what Muse says and the page shows
+    assert line == "5 big plays, led by the poster dunk in the third"
+    assert alert["title"] == "game: 5 highlights ready"
+    assert alert["body"] == f"{line}\nAsk Muse what's ready, or open Phone offers."
+    # Not offered on the phone, a game's alert names its best clip, as before.
+    assert app.worker.alerts.game_ready(app.store.get_job(job_id), 5, offered=False, line=line)
+    assert sent(app, ntfy)[-1]["body"] == "Poster dunk in the third\nOpen Game day to watch them."
+
+
+@pytest.mark.parametrize("answer", [MetaError("Muse Spark answered 503.", status=503), "3 dunks and a block"],
+                         ids=["spark-failed", "made-up-number"])
+def test_without_muse_sparks_line_the_alert_names_the_best_clip(alerting, ntfy, answer):
+    app = alerting()
+    meta = FakeMeta(fail=answer) if isinstance(answer, Exception) else SaysLine(answer)  # there were 2 dunks
+    app.worker.meta_factory = lambda: meta
+    switch_on(app.store, whatsapp=False, muse=True)
+    channel(app)
+    upload(app.client)
+    app.worker.run_next_job()
+    [alert] = sent(app, ntfy)
+    assert alert["body"] == "Poster dunk in the third\nAsk Muse what's ready, or open Phone offers."
+    assert "offer_line" in [c[1] for c in meta.calls]  # asked, and not used
 
 
 def test_a_game_that_didnt_finish_alerts_with_the_plain_error(alerting, ntfy):
