@@ -32,7 +32,7 @@ ffmpeg cuts and renders the clips. It is a tool, not a model.
 
 | Kind | Parts |
 |---|---|
-| **Meta model calls (AI)** | Muse Voice, Muse Spark and SAM 3.1, through the Meta Model API. Nothing else in the project runs AI. |
+| **Meta model calls (AI)** | Muse Voice, Muse Spark and SAM 3.1, through the Meta Model API. Muse Spark also writes the one-line summary of each offer that Muse reads out, the approval page shows and the phone alert carries. Nothing else in the project runs AI. |
 | **Meta services (not AI)** | The Instagram Graph API and Facebook Page Reels (posting), Facebook Login for Business (connecting the Page), and the Muse app's custom connector (Muse asks what's ready) |
 | **Regular services and tools (not AI)** | AWS Lightsail (the server), Caddy (HTTPS), Cloudflare Workers with D1 and KV (the phone relay), ffmpeg (cutting and rendering), SQLite (the app's data), Python, FastAPI. Optional: Google Drive with rclone (dropping games into a folder), ntfy (phone alerts) |
 

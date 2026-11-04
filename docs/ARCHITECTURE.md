@@ -101,7 +101,13 @@ Muse Spark, SAM 3.1, 9:16 and Captions.
    so a clip may open or end on a close-up. A play whose time falls in a
    replay, or that can't make 6 seconds between a wipe and the cut after
    it, makes no clip, and the job's warnings say so.
-6. **Captions.** Muse Spark writes each clip's caption for posting.
+6. **Captions.** Muse Spark writes each clip's caption for posting, and
+   the one-line summary of the offer that Muse reads out, the approval page
+   shows and the phone alert carries. For that line it is told only the
+   counts and each clip's title and kind of play. Without a Meta key, or
+   when the line breaks a rule (a number the clips don't have, a link, a
+   hashtag), the summary is the counted one, such as "5 clips: 2 dunks, 1
+   three, 1 block and 1 other play".
 7. **The offer.** With **Let me approve publishing from my phone** on, the
    app sends the offer to the relay, signed. The relay keeps it for Muse.
    Muse doesn't message the owner: they ask it what's ready (or set a
