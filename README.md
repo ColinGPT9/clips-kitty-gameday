@@ -34,7 +34,7 @@ ffmpeg cuts and renders the clips. It is a tool, not a model.
 |---|---|
 | **Meta model calls (AI)** | Muse Voice, Muse Spark and SAM 3.1, through the Meta Model API. Nothing else in the project runs AI. |
 | **Meta services (not AI)** | The Instagram Graph API and Facebook Page Reels (posting), Facebook Login for Business (connecting the Page), and the Muse app's custom connector (Muse asks what's ready) |
-| **Regular services and tools (not AI)** | AWS Lightsail (the server), Caddy (HTTPS), Cloudflare Workers with D1 and KV (the phone relay), ffmpeg (cutting and rendering), SQLite (the app's data), Python, FastAPI. Optional: Google Drive with rclone (dropping games into a folder) |
+| **Regular services and tools (not AI)** | AWS Lightsail (the server), Caddy (HTTPS), Cloudflare Workers with D1 and KV (the phone relay), ffmpeg (cutting and rendering), SQLite (the app's data), Python, FastAPI. Optional: Google Drive with rclone (dropping games into a folder), ntfy (phone alerts) |
 
 `tests/test_meta_only.py` fails the build if any other AI package, import or
 model host appears.
@@ -164,6 +164,10 @@ the approval page, watch the clips, tick the ones you want and where they
 go, confirm, and enter your PIN. Muse can hand you the link, but it can't
 approve or post anything. What protects each step:
 [docs/SECURITY.md](docs/SECURITY.md).
+
+Optional: **Phone alerts** in **Setup** pushes an alert to your phone through
+ntfy (a free app for iPhone and Android, no account) when a game is ready or
+fails, and when a post goes up or fails.
 
 ## Costs
 

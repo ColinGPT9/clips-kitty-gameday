@@ -12,13 +12,14 @@ against.
   a password, and the app sits behind HTTPS. The optional judge login, for
   the event's judges, can upload and look, and change nothing else.
 - **The relay never calls the app.** The app calls out to the relay (signed
-  requests) and to `api.meta.ai`. The sign-in redirects, Muse's calls and
-  the phone's pages all land on the relay.
+  requests), to `api.meta.ai` and, with phone alerts on, to ntfy. The
+  sign-in redirects, Muse's calls and the phone's pages all land on the relay.
 - **No Meta app secret or account token in the app.** They live on the
   owner's relay only: Wrangler secrets, and account tokens sealed with
   AES-GCM under `TOKEN_KEY` in D1. The app holds the owner password, its
-  Meta Model API key and its relay device secret. A key saved in the
-  dashboard and the device secret are encrypted at rest.
+  Meta Model API key, its relay device secret and, with phone alerts on, the
+  ntfy channel's name. A key saved in the dashboard, the device secret and the
+  channel's name are encrypted at rest.
 - **A link alone authorises nothing.** Approving needs the link
   (single-purpose, expiring), the PIN, and the app's own checks.
 - **The relay has the least power that works.** It can't read the app's
@@ -40,6 +41,7 @@ against.
 | Script injection in the dashboard | `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`. The dashboard has no inline scripts or styles and loads nothing from other sites (`tests/test_static.py`). Also `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` |
 | Stored secrets read from a copy of the database | Stored secrets, such as the saved Meta key, are encrypted with a Fernet key from `GAMEDAY_SECRET_KEY`, or from `DATA_DIR/secret.key` (0600). A backup of `DATA_DIR` holds that file too, so keep backups private |
 | The Meta key leaking through the dashboard | No route ever sends it back: the dashboard only learns whether one is saved, or comes from the environment |
+| Someone else reading the phone alerts | Anyone who knows an ntfy channel's name can read it, so the app makes the name: `clipskitty-` and 24 random characters (144 bits). It is in the one answer that makes it, shown until **Done**, kept encrypted, and never logged or put in an event. Alerts go over HTTPS only and carry no secret: a game's name, a clip's title, why something failed (file paths cut to file names), and a link that still needs the password. Whoever learned the name could also send the phone fake alerts: **Make a new channel** replaces it, **Turn off** forgets it |
 | Reading files through the media route | `/media/...` serves only `.mp4`, `.jpg` and `.png`, only under `DATA_DIR/media/jobs/*/clips/`. Scratch files (`tmp/`) are never served |
 | A huge or bogus upload | Uploads are streamed to disk, capped at `MAX_UPLOAD_MB` (413), and checked by ffprobe; a file that isn't a readable video gets 400 and is removed |
 | A watched folder used to change files, or to feed the app its own output | Watched files are only read. A folder inside `DATA_DIR` is refused |

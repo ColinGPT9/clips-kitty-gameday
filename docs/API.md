@@ -43,14 +43,14 @@ and accounts.
 - Everything else gets 403 before any route runs:
   `{"error": "The judge login can't change this."}` for a change, and
   `{"error": "The judge login can't open this."}` for a read. That covers the
-  settings, the Meta key, watched folders, an offer's details, the audit log,
-  and every change under `/remote-approval/` (the relay, the PIN, the Muse
-  key, the accounts and the offers). A route added later is the owner's alone
-  until `gameday/access.py` lists it.
+  settings, the Meta key, watched folders, the phone alerts, an offer's
+  details, the audit log, and every change under `/remote-approval/` (the
+  relay, the PIN, the Muse key, the accounts and the offers). A route added
+  later is the owner's alone until `gameday/access.py` lists it.
 - Cancelling or retrying the owner's game gets 403: "The judge login can only
   cancel or retry games uploaded with it."
 - None of these reads returns a secret: no answer ever holds the Meta key,
-  the relay's device secret or a password.
+  the relay's device secret, the phone alert channel or a password.
 - A game uploaded with the judge login has `"created_by": "judge"`, and so has
   a retry of it. It runs on the same models, so `META_BUDGET_USD` caps its
   spending as before. It is never offered on the owner's phone: its `captions`
@@ -80,9 +80,12 @@ and accounts.
  "worker": {"busy": true, "job_id": 4, "queued": 1},
  "budget": {"limit_usd": 25.0, "spent_usd": 1.37},
  "watches": 1,
- "upload_limit_mb": 4096}
+ "upload_limit_mb": 4096,
+ "alerts": {"ntfy": true}}
 ```
 `role` is who signed in: `"owner"` or `"judge"` (see The judge login).
+`alerts.ntfy` is whether phone alerts are on (see Phone alerts); the channel's
+name is never in it.
 The relay, PIN, Muse and accounts are in `GET /remote-approval/status` (below).
 
 ### Settings
@@ -105,6 +108,42 @@ The relay, PIN, Muse and accounts are in `GET /remote-approval/status` (below).
 - `POST /api/meta/test` gives `{"ok": true}`, or `{"ok": false, "error": "..."}`.
   It makes one cheap call. When `META_BUDGET_USD` stopped the call before it
   reached Meta, the answer also has `"budget": true`.
+
+### Phone alerts
+
+Optional push alerts on the owner's phone through ntfy (https://ntfy.sh), a
+free, open-source notification app for iPhone and Android with no account.
+It is a notification service, not a model. The phone subscribes to a channel
+(an ntfy topic). Anyone who knows its name can read the alerts, so the name is
+long, random and kept like a password.
+
+| Route | Answer |
+|---|---|
+| `POST /api/alerts/ntfy` | `{"topic": "clipskitty-...", "subscribe": {"web": "https://ntfy.sh/clipskitty-...", "app": "ntfy://ntfy.sh/clipskitty-..."}, "alerts": {"ntfy": true}}`. A new channel, replacing any older one. This answer is the only one that ever holds its name |
+| `DELETE /api/alerts/ntfy` | `{"alerts": {"ntfy": false}}`. Alerts stop |
+| `POST /api/alerts/test` | `{"ok": true}`, or `{"ok": false, "error": "..."}`. Sends "Test alert from Clips Kitty Game Day" |
+
+- The name is `clipskitty-` and 24 random URL-safe characters, kept encrypted
+  with the other secrets. No log line, event, error or other answer holds it;
+  `GET /api/status` says only whether alerts are on.
+- The judge login gets 403 on all three.
+- Each alert is one HTTPS POST to `NTFY_SERVER/<channel>`, with a 10-second
+  timeout, from a thread of its own, so a slow ntfy never holds up a game or
+  the phone loop. An alert that isn't sent adds one `warn` event, "Phone alert
+  not sent: <reason>", and nothing else.
+
+What alerts, for the owner's games only (a game uploaded with the judge login
+never alerts):
+
+| When | Title | Message | Opens |
+|---|---|---|---|
+| A game finishes with clips | `<video name>: 5 highlights ready` | The best clip's title, then "Ask Muse what's ready, or open Phone offers." if it was offered on the phone, else "Open Game day to watch them." | Game day |
+| A game fails | `Game didn't finish: <video name>` | The error, with any file path cut to the file's name | Game day |
+| An approval's uploads have all finished | `Posted to Instagram + Facebook` (the places that worked), or `Posting failed` | The clips' titles, and why a post didn't go up, with Meta's error code | Phone offers |
+
+`<video name>` is the file's name without its extension. An approval sends
+one alert, once all its uploads have finished. Tapping an alert opens the page
+in the last column when `PUBLIC_URL` is set.
 
 ### Upload
 `POST /api/upload?filename=game.mp4`, where the body is the raw file
@@ -246,6 +285,8 @@ The app reads these in `gameday/config.py`. `docs/RUNNING.md` explains them for 
 | `WATCH_DIR` | | if set, this folder is watched from the first start |
 | `MAX_UPLOAD_MB` | `4096` | |
 | `RELAY_URL`, `RELAY_ENROLMENT_KEY` | | optional; they fill in the relay form |
+| `PUBLIC_URL` | | optional; the dashboard's address, such as `https://203-0-113-7.sslip.io`. With it, tapping a phone alert opens the right page. `scripts/setup-lightsail.sh` sets it |
+| `NTFY_SERVER` | `https://ntfy.sh` | the ntfy server phone alerts go to. `https://` only (`http://` on this computer) |
 | `FFMPEG`, `FFPROBE` | `ffmpeg`, `ffprobe` | |
 | `GAMEDAY_KEEP_TMP` | `0` | `1` keeps each job's scratch files |
 | `LOG_LEVEL` | `INFO` | |
