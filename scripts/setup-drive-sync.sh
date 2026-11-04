@@ -20,6 +20,7 @@ fi
 FOLDER="${1:-Game Day}"
 RUN_USER="${SUDO_USER:-root}"
 REMOTE="${GAMEDAY_DRIVE_REMOTE:-gdrive}"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGING=/srv/gameday-drive
 WATCH_DIR=/srv/gameday-watch
 
@@ -29,18 +30,33 @@ apt-get install -y -q --no-install-recommends rclone
 
 as_user() { sudo -H -u "$RUN_USER" "$@"; }
 
+# A sign-in saved earlier that doesn't work (a bad paste, or Google took it back) is removed,
+# so you're asked for a new one.
+if as_user rclone listremotes | grep -qx "$REMOTE:" && ! as_user rclone lsf "$REMOTE:" --max-depth 1 >/dev/null 2>&1; then
+  echo "The Google Drive sign-in saved on this server doesn't work, so it's removed and you're asked again."
+  as_user rclone config delete "$REMOTE"
+fi
+
 if ! as_user rclone listremotes | grep -qx "$REMOTE:"; then
   echo
-  echo "Paste the token that 'rclone authorize' printed (it starts with {\"access_token\")."
-  echo "Nothing shows while you paste. Then press Enter."
-  read -rs TOKEN
+  echo "Paste what 'rclone authorize' printed between the arrows (it starts with eyJ or {\"access_token\")."
+  echo "Paste it once. Nothing shows while you paste. Then press Enter."
+  read -rs RAW
   echo
+  # Newer rclone packs the token in base64; this server's older rclone wants the JSON itself.
+  TOKEN="$(printf '%s' "$RAW" | python3 "$REPO/scripts/drive_token.py")"
+  unset RAW
   if [ -z "$TOKEN" ]; then
-    echo "No token given." >&2
+    echo "That isn't the sign-in text from 'rclone authorize'. Copy everything between the arrows, then run this again." >&2
     exit 1
   fi
   as_user rclone config create "$REMOTE" drive scope=drive.readonly token="$TOKEN" --non-interactive >/dev/null
   unset TOKEN
+  if ! as_user rclone lsf "$REMOTE:" --max-depth 1 >/dev/null 2>&1; then
+    as_user rclone config delete "$REMOTE"
+    echo "Google didn't accept that sign-in. Run 'rclone authorize' on your computer again, then run this again." >&2
+    exit 1
+  fi
 fi
 
 echo "== Checking the Drive folder \"$FOLDER\""
