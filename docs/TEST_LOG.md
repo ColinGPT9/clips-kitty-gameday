@@ -59,7 +59,7 @@ Each run gives:
   - 8 clips in 227 s.
   - Time per stage: Muse Voice 95 s, Muse Spark 28 s, SAM 3.1 53 s, render 52 s.
   - Estimated cost: Muse Voice $0.067, Muse Spark $0.023, SAM 3.1 $0.558.
-    Total $0.649, about $0.081 a clip.
+    Total $0.649.
   - Share of each clip that followed the ball: 0%, 84%, 80%, 79%, 88%, 89%, 89% and 72%.
     The 0% clip is the celebration after the buzzer, where it followed the players.
   - Disk: the game was 138 MB, and its clips came to 173 MB.
@@ -79,7 +79,7 @@ Each run gives:
   - 2,700 s of game made 8 clips in 347 s.
   - Time per stage: Muse Voice 151 s, Muse Spark 31 s, SAM 3.1 94 s, render 70 s.
   - Estimated cost: Muse Voice $0.135, Muse Spark $0.031, SAM 3.1 $0.704.
-    Total $0.870, about $0.11 a clip.
+    Total $0.870.
   - Share of each clip that followed the ball: 46%, 80%, 43%, 59%, 73%, 81%, 66% and 63%.
     The rest of each clip followed the players.
 - **Found:** some clips ran past the play into the broadcast's close-ups. Each
@@ -173,7 +173,9 @@ Each run gives:
     published"). The "Posted to Instagram + Facebook" alert followed, and
     Muse answered "what got posted" with that post.
 - **Tests at this commit (CI):**
-  - 571 Python tests on Ubuntu and Windows (4 live tests left out).
+  - 571 Python tests on Windows.
+  - 568 Python tests on Ubuntu, where 3 Windows-only tests are skipped.
+  - 4 live tests left out on both.
   - 105 relay tests.
   - ruff and the provenance check, both clean.
 - **Found:** one clip got only the plain title "Highlight". The other three

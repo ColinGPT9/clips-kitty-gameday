@@ -11,7 +11,7 @@ were copied here without code from before the event.
 
 | Path here | Source | Source commit | Notes |
 |---|---|---|---|
-| `meta-relay/**` | `meta-relay/**` | 0e811c3 (2 Nov 2026) | Byte for byte (commit e605c63 here). First written in 819f66f on 29 Oct 2026. |
+| `meta-relay/**` | `meta-relay/**` | 0e811c3 (2 Nov 2026) | Byte for byte (commit e605c63 here). First written in 819f66f on 29 Oct 2026. Only `meta-relay/README.md` has changed since: its links point at this repository's docs, and it describes this app. |
 
 ### Event code brought in for the web app's phone approval
 
@@ -37,7 +37,7 @@ For these older files, only the lines added during the event were ported:
 | Path here | Source file | Event commits | What |
 |---|---|---|---|
 | `gameday/store.py` (the `remote_*` tables) | `core/state.py` | 819f66f (29 Oct), 0e811c3 (2 Nov) | the approval tables and their methods |
-| `gameday/worker.py` | `server/jobs.py`, `server/publisher.py` | 819f66f, 17d63c5, 094057a, 05d0d67 (29–30 Oct), 56affc6 (2 Nov) | offer the clips when a job ends; post approved clips |
+| `gameday/worker.py` | `server/jobs.py`, `server/publisher.py` | 819f66f, 17d63c5, 094057a, 05d0d67 (29-30 Oct), 56affc6 (2 Nov) | offer the clips when a job ends; post approved clips |
 | `gameday/watch/watcher.py`, `notifier.why_not_offered` | `server/automation.py` | 7fb3272, f6099c1, 4d7078d (30 Oct) | folder polling, the phone checks, the data-folder check |
 
 The event's tests were ported to the new store:
@@ -56,7 +56,7 @@ The Muse Voice client (`gameday/meta_api/voice.py`) was written here. Its
 request shape follows the event's Muse Voice code, first added in 9d5fb39
 (29 Oct 2026).
 
-## Written in this repository (from 3 Nov 2026)
+## Written in this repository (from the night of 2 Nov 2026)
 
 Everything else.
 

@@ -7,7 +7,7 @@ on your phone.
 **Repository:** https://github.com/ColinGPT9/clips-kitty-gameday (public,
 AGPL-3.0-or-later)
 
-**Demo video:** TODO
+**Demo video:** https://youtu.be/1_QXVlY6cqE (2:50)
 
 **Try it:** https://18-190-220-192.sslip.io, user `judge`, with the password
 in the submission's private field. No account to make
@@ -23,25 +23,34 @@ in the submission's private field. No account to make
   - The phone relay (`meta-relay/`), the approval flow and the Instagram and
     Facebook publishing were written from 29 Oct to 2 Nov 2026 for this
     hackathon, on an event branch, and brought here.
-  - The web app and its Meta-only engine were written here from 3 Nov 2026.
+  - The web app and its Meta-only engine were written here from the night of
+    2 Nov 2026.
 - [PROVENANCE.md](../PROVENANCE.md) lists every imported file with its source
   commit and date. CI compares the repository with clips-studio at 6245e02
   (28 Oct 2026) and fails on any shared block of five lines of code.
 
 ## The problem
 
-Highlights travel furthest while the game is still trending. Posts that land
-then get the team more reach. But the person who runs a team's socials is at
-the game, not at an editing desk. Cutting, reframing for a phone screen and
-posting each play by hand takes too long.
+Imagine you're the social media manager for an NBA team. You're at the game,
+not at an editing desk. The usual way takes hours: the footage is recorded,
+staff review it, an editor cuts it at a computer, and it's posted after the
+buzz.
 
-With Clips Kitty Game Day, the clips are ready in minutes. They go out once
-that person approves them on their phone, while the game is still trending.
+With Clips Kitty Game Day, it takes minutes. The first quarter lands in a
+shared folder, Meta's models find the plays and cut them, and you approve
+each post on your phone. It goes out while the game is still trending.
+
+- **More reach and ad value for the team:** a highlight is worth the most
+  while people are still talking about the game.
+- **More sports on Instagram and Facebook:** more teams can post more Reels,
+  for about $0.80 of Meta usage per 45-minute game.
 
 ## What it does
 
-1. You give it a game: drop the file on the dashboard, or copy it into a
-   watched folder.
+1. You give it a game: drop the file on the dashboard, copy it into a
+   watched folder, or put it in a shared Google Drive folder. The server
+   syncs that folder every minute, read-only, and clips each new game on its
+   own.
 2. Muse Voice transcribes the commentary. Muse Spark picks the plays and
    writes their titles and captions. SAM 3.1 finds the ball, and ffmpeg cuts
    9:16 clips whose crop follows it.
@@ -64,7 +73,7 @@ got posted, and the spending against a budget.
 | **SAM 3.1** (`sam-3.1`, hosted by Meta) | Finds the ball in each play, so the 9:16 crop follows it. Each clip records how much of it followed the ball, and the dashboard shows the frame with SAM's box and the crop |
 | **Muse Spark** (`muse-spark-1.3`) | Reads the commentary and picks the moments, held to a strict JSON schema: each play's window, category, score and the commentary behind it. Writes each clip's title and caption, and the one-line summary of each offer that Muse reads out, the approval page shows and the phone alert carries |
 | **Muse Voice** (`muse-voice-transcribe-1.0`) | Transcribes the game's commentary with times, for Muse Spark to read |
-| **The Muse connector** | A custom connector for Muse, Meta's agent app, on the owner's relay: an MCP server with six tools, plus the same tools as HTTPS routes with an OpenAPI description. Muse says what's ready, hands over the approval link, says what got posted, and puts an offer aside or cancels it. No tool approves or posts. Ran in the Muse app on 2 Nov 2026 on the event branch's relay, and on 4 Nov 2026 with this app on the hosted server ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)) |
+| **The Muse connector** | A custom connector for Muse, Meta's agent app, on the owner's relay: an MCP server with six tools, plus the same tools as HTTPS routes with an OpenAPI description. Muse says what's ready, hands over the approval link, says what got posted, and puts an offer aside or cancels it. No tool approves or posts. Ran in the Muse app on 2 Nov 2026 on the event branch's relay, and on 4 Nov 2026 with this app on the hosted server ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md#what-ran-in-the-muse-app), [TEST_LOG.md](TEST_LOG.md#4-nov-2026-early-morning-from-google-drive-to-a-post-on-the-hosted-server)) |
 | **Graph API Reels** | Instagram Reels (resumable upload, container status, publish, permalink) and Facebook Page Reels (start, upload, finish, status, permalink), made by the relay only for what was approved |
 | **Facebook Login for Business** | Connects the Page and its Instagram account. The tokens stay on the relay |
 
@@ -76,9 +85,9 @@ anything but these three. ffmpeg cuts and renders; it is a tool, not a model.
 
 | Kind | Parts |
 |---|---|
-| **Meta model calls (AI)** | Muse Voice, Muse Spark and SAM 3.1, through the Meta Model API. Nothing else runs AI. |
-| **Meta services (not AI)** | The Instagram Graph API and Facebook Page Reels, Facebook Login for Business, and the Muse app's custom connector |
-| **Regular services and tools (not AI)** | AWS Lightsail, Caddy, Cloudflare Workers with D1 and KV (the relay), ffmpeg, SQLite, Python, FastAPI. Optional: Google Drive with rclone, ntfy (phone alerts) |
+| **Meta model calls (AI)** | Muse Voice Transcribe (`muse-voice-transcribe-1.0`), Muse Spark (`muse-spark-1.3`) and SAM 3.1 (`sam-3.1`, hosted by Meta), through the Meta Model API. Nothing else in the app runs AI. |
+| **Meta apps and platforms** | Muse, Meta's agent app (it asks the app what's ready, through the custom connector). The Instagram Graph API and Facebook Page Reels (posting), and Facebook Login for Business (connecting the Page): not AI. |
+| **Regular services and tools (not AI)** | AWS Lightsail (the server), sslip.io (its address), Caddy with a Let's Encrypt certificate (HTTPS), Cloudflare Workers with D1 and KV (the phone relay and approval page), ffmpeg (cutting and rendering), SQLite, Python and FastAPI. Optional: Google Drive with rclone (the shared folder), and ntfy (phone alerts). |
 
 ## Safety
 
@@ -95,17 +104,18 @@ More in [SECURITY.md](SECURITY.md).
 
 ## What has run
 
-- **This web app on a real game (3 Nov 2026):** a 22.5-minute game made 8
-  vertical clips in 227 s on a desktop PC.
+- **The app's engine on a real game (3 Nov 2026):** a 22.5-minute game made
+  8 vertical clips in 227 s on a desktop PC, through
+  `scripts/run_pipeline.py`.
   - Cost: about $0.65 of Meta usage for the game. Muse Voice $0.07, Muse
     Spark $0.02, SAM 3.1 $0.56.
   - Ball-following: in the 7 clips of live play, SAM 3.1 kept the 9:16
     window on the ball 72-89% of the time. The 8th clip, the celebration
     after the buzzer, followed the players.
   - Details in [TEST_LOG.md](TEST_LOG.md).
-- **The HD demo game (3 Nov 2026):** the second half of Navy vs Air Force at
-  the 2024 Armed Forces Men's Basketball Championship (45 minutes, 1080p,
-  public domain).
+- **The HD demo game (3 Nov 2026), the same way:** the second half of Navy
+  vs Air Force at the 2024 Armed Forces Men's Basketball Championship (45
+  minutes, 1080p, public domain).
   - It made 8 clips in 347 s, for about $0.87 of Meta usage.
   - SAM 3.1 kept the window on the ball 43-81% of the time, and on the players the rest.
 - **The same game on the hosted server (3 Nov 2026):** the 45-minute game
@@ -133,9 +143,10 @@ More in [SECURITY.md](SECURITY.md).
 - **Cost to post:** Instagram and Facebook Reels go through Meta's Graph
   API at no charge. Muse Spark's captions for a game's 8 clips cost about a
   cent.
-- **Tests:** at commit 8fe166c, 571 Python tests (on Ubuntu and Windows,
-  with 4 live tests left out) and 105 relay tests pass in CI, along with
-  the provenance check.
+- **Tests:** at commit 8fe166c, CI passes 571 Python tests on Windows, and
+  568 on Ubuntu, where 3 Windows-only tests are skipped. 4 live tests are
+  left out on both. The relay's 105 tests, ruff and the provenance check pass
+  too.
 - On the event branch, on 1 Nov 2026, the relay and the phone's approval
   page ran live: one clip was approved on a phone with the PIN and posted
   through Meta's APIs as an Instagram Reel and a Facebook Page Reel.
@@ -155,7 +166,8 @@ SAM 3.1, and E-BARD, a YOLOv8n detector trained on basketball.
 | When the two disagreed, it was on the ball | about 337 of 362 | 1 |
 | Ball near the rim (78 frames) | 77 | 11 |
 
-- An AI reviewer checked the ball calls on the disagreements.
+- An AI reviewer checked the ball calls on the disagreements. It is outside
+  the app and was used for this test only.
 - The app itself only ever calls SAM 3.1. E-BARD ran in a separate setup for this test only.
 - E-BARD (https://github.com/GabrieleGiudic/E-BARD), used unmodified under CC BY 4.0.
 
@@ -164,15 +176,14 @@ on about 40% of these frames. The next step is to fine-tune a Meta vision
 model, Muse Glimmer, on a dataset of basketball games. That needs more time
 and a bigger GPU than this project had.
 
-**Next: WhatsApp alerts.** The relay can already send a WhatsApp message when
-highlights are ready.
+**Next: WhatsApp alerts.** The relay has WhatsApp code from the event
+branch, tested only against a fake Meta. The app doesn't use WhatsApp.
 - On the night of 3 Nov I set it up with Meta's WhatsApp test number. The
   token, the webhook and my own phone as a recipient were all in place.
-- Meta then locked the new WhatsApp Business Account (error 131031) before a
-  message went out, so I couldn't launch with it in time.
+- Meta then locked the new WhatsApp Business Account (error 131031) before
+  the first message went out, so I couldn't launch with it in time.
 - The entry ships with Muse and the approval page as the phone flow, plus a
   phone alert app (ntfy) for "highlights ready".
-- Once the account is reviewed and unlocked, WhatsApp is a setting away.
 
 **Next: posting to Threads.** Threads would join Instagram and Facebook as a
 place to post. I couldn't get its API working in time.
