@@ -92,8 +92,9 @@ one to the judges, privately, and never the owner password.
 
 Disk: plan for every uploaded game plus its clips. How much a game takes:
 a 22.5-minute game was a 138 MB upload and made 173 MB of clips (8 clips,
-measured 3 Nov 2026). CPU and memory for a full game on the VM:
-TODO(measured).
+measured 3 Nov 2026). CPU and memory: a server with 2 vCPUs and 4 GB RAM
+(AWS Lightsail) clipped a 45-minute game in about 14 minutes (measured
+3 Nov 2026).
 
 ## Getting games in
 
@@ -115,6 +116,9 @@ TODO(measured).
   your relay's address and, once phone alerts are on, to `NTFY_SERVER`
   (`ntfy.sh` by default). Nothing else. The relay, not the app, talks to the
   Graph API.
+- With the shared-folder sync on (`scripts/setup-drive-sync.sh`): HTTPS to
+  Google Drive, from rclone, not the app. Every minute it copies new games
+  from one Drive folder into the watched folder, with a read-only sign-in.
 
 ## One process only
 

@@ -11,7 +11,8 @@ the app:
   with the file the app sends it;
 - it hosts the connector for your Muse agent ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)).
 
-The relay can also send WhatsApp messages, and this app does not use that.
+The relay also has WhatsApp code from the event branch, tested only against
+a fake Meta. This app does not use it.
 
 The app only ever calls out to the relay: once with the enrolment key to
 register, then with signed requests. The relay never calls the app.

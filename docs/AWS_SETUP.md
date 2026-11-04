@@ -7,7 +7,7 @@ the app and Caddy for HTTPS. Setup is one command.
 ## 1. Make the server (AWS console)
 
 1. Lightsail → **Create instance**. Choose **Linux/Unix**, then **OS Only** → **Ubuntu 24.04 LTS**.
-2. Plan: **2 vCPUs, 4 GB memory**. 2 GB also works, but 4 GB leaves room for long games.
+2. Plan: **2 vCPUs, 4 GB memory**. That's the plan it was tested on: it clipped a 45-minute game in about 14 minutes.
 3. Give it a name and press **Create instance**.
 4. **Networking** → **Create static IP** and attach it to the instance.
 5. On the instance's **Networking** tab, under the IPv4 firewall, add **HTTPS (443)**. SSH (22) and HTTP (80) are there already.
@@ -57,6 +57,16 @@ counts toward the same budget.
 ## Using it
 
 - **Games:** upload them on **Game day**, or copy them into `/srv/gameday-watch` with `scp`.
+- **Games from a shared Google Drive folder:** the server can check one Drive
+  folder every minute and clip each new game in it.
+  1. On a computer with a browser and rclone, run
+     `rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLnJlYWRvbmx5In0"`. It is
+     a read-only sign-in: the server can't change or delete anything in your
+     Drive. Copy what it prints.
+  2. On the server, run `sudo bash scripts/setup-drive-sync.sh "Game Day"`
+     with your folder's name, and paste it when asked.
+  3. New games in that folder are copied into `/srv/gameday-watch`. Each
+     video in it becomes a job.
 - **Logs:** `journalctl -u gameday -f`.
 - **Update:** `git pull`, then run the setup script again. Your passwords and data stay.
 - **Bigger games:** uploads are capped at 4 GB. To raise the cap, run the

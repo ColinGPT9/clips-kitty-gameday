@@ -16,9 +16,12 @@ page (`/a/<link>` on your relay), where you tick the clips and the places to
 post and enter your own PIN. Muse can hand you that link. No tool takes or
 shows the PIN, and the connector tells Muse never to ask for it or type it.
 
-Muse doesn't message you when clips are ready. Offers wait on the relay for
-Muse to find: ask it what's ready (or set yourself a reminder in Muse), or
-look at the dashboard. No message is sent anywhere.
+Muse sends nothing on its own: it doesn't message you when clips are ready.
+Offers wait on the relay for Muse to find: ask it what's ready (or set
+yourself a reminder in Muse), or look at the dashboard. With **Phone alerts** on in
+**Setup**, the app itself pushes alerts to your phone through ntfy: when a
+game is ready (with Muse Spark's line) or fails, and when a post goes up or
+fails.
 
 ## How it works
 
@@ -61,10 +64,12 @@ against its own record of the offer, and publishes.
 
 Try it: "Clips Kitty, what highlights are ready?"
 
-The relay is shared with the desktop edition of Clips Kitty, so some of its
-own wording, which Muse may repeat, doesn't fit this app: another way of
-being messaged, or a Settings screen. Neither applies here. This app sends
-no messages, and Muse keys are made in **Setup → Muse**.
+The relay was first written during the event for the earlier, desktop
+edition of this entry, on the event branch. So some of its own wording,
+which Muse may repeat, doesn't fit this app: "the PC", WhatsApp, or a
+Settings screen. Here "the PC" means this app. This app doesn't use
+WhatsApp: with **Phone alerts** on, its alerts go through ntfy. Muse keys
+are made in **Setup → Muse**.
 
 ## The tools
 
@@ -153,6 +158,14 @@ connector as a custom connector: the remote MCP server, with the key in the
 `Authorization: Bearer` header. Muse then handed over an offer's approval
 link, which opened on the phone. So Muse connects with a header key (no
 OAuth needed), and its calls carry no `Origin` the relay refuses.
+
+On 4 Nov 2026, it ran with this app on the hosted server. The server
+clipped a game from the shared Google Drive folder and sent the offer to the
+relay. Asked "Clips Kitty, what highlights are ready?", Muse listed the
+offer and handed over the approval link. One clip was approved on that page
+with the PIN, and it went up as an Instagram Reel and a Facebook Page Reel.
+Then Muse answered "what got posted" with that post
+([TEST_LOG.md](TEST_LOG.md#4-nov-2026-early-morning-from-google-drive-to-a-post-on-the-hosted-server)).
 
 ## Not confirmed yet
 
