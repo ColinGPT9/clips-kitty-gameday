@@ -23,9 +23,14 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9._ -]+")
 # ---- views ---------------------------------------------------------------------
 
 
+#: Muse Spark's calls made with the offer, so in the Captions stage: the
+#: captions, and the offer's one-line summary (remote_approval/offer_line.py).
+CAPTIONS_PURPOSES = frozenset({"captions", "offer_line"})
+
+
 def stage_of_call(model: str, purpose: str) -> str | None:
     """Which stage of a job a Meta call belongs to, for its cost."""
-    if purpose == "captions":
+    if purpose in CAPTIONS_PURPOSES:
         return "captions"
     return {MODEL_VOICE: "voice", MODEL_SPARK: "spark", MODEL_SAM: "sam"}.get(model)
 

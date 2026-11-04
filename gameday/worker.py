@@ -296,12 +296,13 @@ class Worker:
                       stats=_jsonable(result.stats))
         if should_stop():
             return self._end(job_id, progress, "cancelled", "Cancelled after the clips were made")
-        offered = self._captions_stage(job_id, meta, progress, saved)
+        offer = self._captions_stage(job_id, meta, progress, saved)
         message = f"{saved} clip{'s' if saved != 1 else ''} ready"
         self._end(job_id, progress, "done", message)
         store.add_event("info", "job", f"Job {job_id} is done: {message}.", job_id=job_id)
         if saved:
-            self.alerts.game_ready(job, saved, offered=offered)  # queued only: never waits, never raises
+            # Queued only: never waits, never raises. Muse Spark's line for the offer, when there is one, leads it.
+            self.alerts.game_ready(job, saved, offered=offer is not None, line=_line_of(offer))
         return "done"
 
     def _end(self, job_id: int, progress: _Progress, state: str, message: str, *, note: str = "",
@@ -354,58 +355,63 @@ class Worker:
 
     # ---- the captions stage: the offer on the phone ----------------------------
 
-    def _captions_stage(self, job_id: int, meta: MetaAPI | None, progress: _Progress, clips: int) -> bool:
-        """Whether the clips were offered on the phone."""
+    def _captions_stage(self, job_id: int, meta: MetaAPI | None, progress: _Progress, clips: int) -> dict | None:
+        """The offer of the clips made on the phone (as remote_approval/store.py
+        get_review gives it), or None when they weren't offered."""
         if access.made_by_judge(self.store.get_job(job_id) or {}):
             progress.set("captions", "skipped", access.NOT_OFFERED)
-            return False
+            return None
         progress("captions", 0.0, "Getting the clips ready for your phone")
+        review = None
         try:
-            state, note = self._offer(job_id, meta, progress, clips)
+            state, note, review = self._offer(job_id, meta, progress, clips)
         except Exception as e:
             log.exception("Job %s: the offer couldn't be made.", job_id)
             state, note = "failed", f"The offer couldn't be made ({type(e).__name__})."
         progress.close_current(state, note=note)
-        if state == "done":
-            self.store.add_event("info", "phone", note, job_id=job_id)
-            self.wake_relay()
-        return state == "done"
+        if state != "done":
+            return None
+        self.store.add_event("info", "phone", note, job_id=job_id)
+        self.wake_relay()
+        return review
 
-    def _offer(self, job_id: int, meta: MetaAPI | None, progress: _Progress, clips: int) -> tuple[str, str]:
+    def _offer(self, job_id: int, meta: MetaAPI | None, progress: _Progress,
+               clips: int) -> tuple[str, str, dict | None]:
+        """(state, note, the offer made or None) for the captions stage."""
         from gameday.remote_approval import notifier, service, summary
         from gameday.remote_approval import settings as ra_settings
         from gameday.remote_approval import store as ra_store
 
         if not clips:
-            return "skipped", "No clips to offer."
+            return "skipped", "No clips to offer.", None
         config = ra_settings.load(self.store)
         why = notifier.why_not_offered(config)
         if why:
-            return "skipped", why
+            return "skipped", why, None
         if service.client(self.store) is None:
-            return "skipped", "Connect this app to your relay to get its clips on your phone."
+            return "skipped", "Connect this app to your relay to get its clips on your phone.", None
         job = self.store.get_job(job_id)
         if config["basketball_only"] and summary.kind_of(loads(job["options"], {})) != "basketball":
             return "skipped", ("Only basketball games are offered on your phone. "
-                               f"{notifier.WHERE}, tick Offer other videos too under Publishing.")
+                               f"{notifier.WHERE}, tick Offer other videos too under Publishing."), None
         if config["muse_captions"] or config["muse_summary"]:
             progress("captions", 0.2, "Muse Spark is writing the captions")
         review_id = notifier.on_job_finished(self.store, job, "done", meta=meta)
         if review_id is None:
-            return "skipped", "Nothing was offered: the clips are already posted, or already offered."
+            return "skipped", "Nothing was offered: the clips are already posted, or already offered.", None
         review = ra_store.get_review(self.store, review_id)
         offered = len(review["clips"])
         words = f"Offered {offered} clip{'s' if offered != 1 else ''} on your phone."
         if review.get("captions"):
-            return "done", f"Muse Spark wrote the captions. {words}"
+            return "done", f"Muse Spark wrote the captions. {words}", review
         if not (config["muse_captions"] or config["muse_summary"]):
-            return "done", words
+            return "done", words, review
         if meta is None:
-            return "done", f"{words} No Meta key is saved, so the clips' own titles are the captions."
+            return "done", f"{words} No Meta key is saved, so the clips' own titles are the captions.", review
         skipped = next((r["detail"] for r in ra_store.audit_log(self.store, review_id, 50)
                         if r["action"] == "muse_spark_skipped"), "")
         return "done", f"{words} Muse Spark couldn't write the captions ({skipped or 'no answer'}), so the " \
-                       "clips' own titles are used."
+                       "clips' own titles are used.", review
 
     # ---- the relay loop and uploads ---------------------------------------------
 
@@ -479,6 +485,17 @@ class _StopCheck:
             row = self.store.get_job(self.job_id)
             self._answer = bool(row is not None and row["cancel_requested"])
         return self._answer
+
+
+def _line_of(offer: dict | None) -> str:
+    """The one-line summary Muse Spark wrote for this offer
+    (remote_approval/offer_line.py), "" for none."""
+    from gameday.remote_approval import offer_line
+
+    try:
+        return offer_line.line_of(offer) if offer else ""
+    except Exception:  # the alert goes all the same, with the best clip's title
+        return ""
 
 
 def _options(saved: dict) -> PipelineOptions:

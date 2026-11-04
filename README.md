@@ -23,7 +23,7 @@ asks you on your phone.
 | Model | What it does here |
 |---|---|
 | Muse Voice (`muse-voice-transcribe-1.0`) | listens to the commentary |
-| Muse Spark (`muse-spark-1.3`) | picks the plays, and writes the titles and captions |
+| Muse Spark (`muse-spark-1.3`) | picks the plays, and writes the titles, the captions and each offer's one-line summary |
 | SAM 3.1 (`sam-3.1`, hosted by Meta) | follows the ball for the 9:16 crop |
 
 ffmpeg cuts and renders the clips. It is a tool, not a model.
@@ -32,7 +32,7 @@ ffmpeg cuts and renders the clips. It is a tool, not a model.
 
 | Kind | Parts |
 |---|---|
-| **Meta model calls (AI)** | Muse Voice, Muse Spark and SAM 3.1, through the Meta Model API. Nothing else in the project runs AI. |
+| **Meta model calls (AI)** | Muse Voice, Muse Spark and SAM 3.1, through the Meta Model API. Muse Spark also writes the one-line summary of each offer that Muse reads out, the approval page shows and the phone alert carries. Nothing else in the project runs AI. |
 | **Meta services (not AI)** | The Instagram Graph API and Facebook Page Reels (posting), Facebook Login for Business (connecting the Page), and the Muse app's custom connector (Muse asks what's ready) |
 | **Regular services and tools (not AI)** | AWS Lightsail (the server), Caddy (HTTPS), Cloudflare Workers with D1 and KV (the phone relay), ffmpeg (cutting and rendering), SQLite (the app's data), Python, FastAPI. Optional: Google Drive with rclone (dropping games into a folder), ntfy (phone alerts) |
 
@@ -67,7 +67,7 @@ flowchart TD
     F["Game video<br/>uploaded, or copied into a watched folder"]
     subgraph APP["The app: one Python process"]
         V["Muse Voice<br/>the commentary, with times"]
-        S["Muse Spark<br/>picks the plays · titles · captions"]
+        S["Muse Spark<br/>picks the plays · titles · captions<br/>each offer's one-line summary"]
         M["SAM 3.1<br/>finds the ball in each play"]
         R["ffmpeg<br/>cuts and renders each clip at 9:16"]
         O["The offer<br/>the game's best clips"]

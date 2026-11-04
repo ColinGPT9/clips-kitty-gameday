@@ -176,14 +176,20 @@ class Alerts:
 
     # ---- what alerts ------------------------------------------------------------
 
-    def game_ready(self, job, clips: int, *, offered: bool) -> bool:
-        """A game finished with `clips` clips; `offered` is whether they went to the phone."""
+    def game_ready(self, job, clips: int, *, offered: bool, line: str = "") -> bool:
+        """A game finished with `clips` clips; `offered` is whether they went
+        to the phone. `line` is the one-line summary Muse Spark wrote for that
+        offer (remote_approval/offer_line.py), "" for none: it says what's
+        ready, in place of the best clip's title."""
         try:
             if not clips or access.made_by_judge(job):
                 return False
-            rows = self.store.clips_for_job(int(job["id"]))
-            best = max(rows, key=lambda c: (float(c["score"] or 0), -int(c["idx"]))) if rows else None
-            lines = [plain(best["title"] or best["label"], 120) if best is not None else "",
+            first = plain(line) if offered else ""
+            if not first:
+                rows = self.store.clips_for_job(int(job["id"]))
+                best = max(rows, key=lambda c: (float(c["score"] or 0), -int(c["idx"]))) if rows else None
+                first = plain(best["title"] or best["label"], 120) if best is not None else ""
+            lines = [first,
                      "Ask Muse what's ready, or open Phone offers." if offered else "Open Game day to watch them."]
             return self.alert(f"{self._name(job)}: {clips} highlight{'s' if clips != 1 else ''} ready",
                               "\n".join(line for line in lines if line), view="gameday", tags=("basketball",))

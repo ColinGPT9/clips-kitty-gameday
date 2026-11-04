@@ -58,7 +58,7 @@ got posted, and the spending against a budget.
 | Meta tool | Use |
 |---|---|
 | **SAM 3.1** (`sam-3.1`, hosted by Meta) | Finds the ball in each play, so the 9:16 crop follows it. Each clip records how much of it followed the ball, and the dashboard shows the frame with SAM's box and the crop |
-| **Muse Spark** (`muse-spark-1.3`) | Reads the commentary and picks the moments, held to a strict JSON schema: each play's window, category, score and the commentary behind it. Writes each clip's title and caption |
+| **Muse Spark** (`muse-spark-1.3`) | Reads the commentary and picks the moments, held to a strict JSON schema: each play's window, category, score and the commentary behind it. Writes each clip's title and caption, and the one-line summary of each offer that Muse reads out, the approval page shows and the phone alert carries |
 | **Muse Voice** (`muse-voice-transcribe-1.0`) | Transcribes the game's commentary with times, for Muse Spark to read |
 | **The Muse connector** | A custom connector for Muse, Meta's agent app, on the owner's relay: an MCP server with six tools, plus the same tools as HTTPS routes with an OpenAPI description. Muse says what's ready, hands over the approval link, says what got posted, and puts an offer aside or cancels it. No tool approves or posts. Ran in the Muse app on 2 Nov 2026, on the event branch's relay ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)) |
 | **Graph API Reels** | Instagram Reels (resumable upload, container status, publish, permalink) and Facebook Page Reels (start, upload, finish, status, permalink), made by the relay only for what was approved |

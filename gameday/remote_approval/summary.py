@@ -5,7 +5,10 @@ things like "4 dunks, 3 threes and a block" or "3 highlights". Every number in
 it is counted here from the clips the pipeline saved, never written by a
 model: a notification that says "3 dunks" when there were two is worse than
 no notification. Muse Spark may add a line of colour when the owner turns
-that on (captions.py); it never replaces these counts.
+that on (captions.py). With a Meta key, Muse Spark also writes each offer's
+one-line summary (offer_line.py), and a line giving a number these counts
+and the clips' titles don't hold, or "3 dunks" when there were two, is not
+used: the counts are the summary then, and whenever there is no line.
 
 An offer is one of two kinds (kind_of): a basketball game, counted by each
 clip's category (gameday.types.CATEGORIES, which the engine sets), or any
@@ -52,6 +55,12 @@ def category_of(category: str, kind: str = "basketball") -> str:
         return HIGHLIGHT[0]
     category = str(category or "")
     return category if category in _BASKETBALL else OTHER[0]
+
+
+def word_for(category: str) -> str:
+    """A category in the words a message names one clip of it with:
+    "dunk", "three", "big moment"."""
+    return next((one for cid, one, _ in _ORDER if cid == category), OTHER[1])
 
 
 def label_of(clip) -> str:
@@ -160,8 +169,9 @@ def build(job_title: str, all_clips, offered: list[dict], kind: str = "basketbal
 
 
 def ready_text(summary: dict) -> str:
-    """The sentence the WhatsApp message carries. Deterministic: the same
-    clips always give the same words."""
+    """The offer's counted summary: its summary_text when Muse Spark wrote
+    no line for it (offer_line.py), and what the dashboard shows.
+    Deterministic: the same clips always give the same words."""
     n = summary["offered"]
     extra = ""
     if summary["total_clips"] > n:

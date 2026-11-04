@@ -12,9 +12,10 @@ import json
 from datetime import timedelta
 
 import pytest
-from platform_fakes import SECRET, FakeMeta, FakeRelay, finished_job, sign_command, switch_on
+from platform_fakes import SECRET, FakeMeta, FakeRelay, SaysLine, finished_job, sign_command, switch_on
 
-from gameday.remote_approval import captions, commands, notifier, service, states, store, summary, usage
+from gameday import access
+from gameday.remote_approval import captions, commands, notifier, offer_line, service, states, store, summary, usage
 from gameday.remote_approval import settings as ra_settings
 from gameday.remote_approval.relay import RelayError
 from gameday.types import MetaError
@@ -318,7 +319,7 @@ def test_muse_spark_writes_every_clips_words_in_one_request_and_it_is_kept(db, o
     job = finished_job(db, on, hint="Blue and Gold")
     review_id = notifier.on_job_finished(db, job, "done", meta=meta)
     review = store.get_review(db, review_id)
-    [(_, purpose, job_id, messages)] = meta.calls
+    [(_, purpose, job_id, messages)] = [c for c in meta.calls if c[1] == "captions"]
     assert (purpose, job_id) == ("captions", job["id"])
     told = json.loads(messages[-1]["content"])
     assert told["teams_or_players"] == "Blue and Gold"
@@ -332,8 +333,8 @@ def test_muse_spark_writes_every_clips_words_in_one_request_and_it_is_kept(db, o
     assert text["instagram"].endswith("#hoops #game #day #basketball")  # hashtags never hold a space
     # Kept: a second offer of the same clips asks nothing.
     assert captions.generate(db, review, {}, meta=meta) == review["captions"]
-    assert len(meta.calls) == 1
-    assert db.job_cost(job["id"]) == 0.002
+    assert [c[1] for c in meta.calls] == ["captions", "offer_line"]  # and the offer's line, once
+    assert db.job_cost(job["id"]) == 0.004
 
 
 def test_hashtags_muse_spark_puts_in_the_caption_are_posted_once(db, on):
@@ -342,7 +343,7 @@ def test_hashtags_muse_spark_puts_in_the_caption_are_posted_once(db, on):
 
     def with_hashtags_inside(*args, **kwargs):
         answer = plain(*args, **kwargs)
-        for clip in answer["clips"]:
+        for clip in answer.get("clips") or []:  # the captions, not the offer's line
             clip["instagram_caption"] += " #Hoops #Clutch"  # what the real Muse Spark did
             clip["facebook_description"] = "What a #clutch finish. #HOOPS"
         return answer
@@ -354,6 +355,240 @@ def test_hashtags_muse_spark_puts_in_the_caption_are_posted_once(db, on):
     assert text["instagram"] == "Poster dunk from tonight.\n\n#hoops #game #day #basketball #clutch"
     assert text["facebook"] == "What a #clutch finish.\n\n#hoops #game #day #basketball"
     assert "no hashtags" in captions.INSTRUCTIONS
+
+
+# ---- Muse Spark's one-line summary of the offer ---------------------------------------------
+
+
+COUNTED = "5 clips: 2 dunks, 1 three, 1 block and 1 other play"
+#: What FakeMeta writes for the plays finished_job makes (platform_fakes.spark_line).
+LINE = "5 big plays, led by the poster dunk in the third"
+
+
+@pytest.fixture
+def muse_on(db, data_dir):
+    """Muse alone, as the dashboard sets the phone up: a Muse key and remote
+    approval on, the app registered, every platform connected."""
+    switch_on(db, whatsapp=False, muse=True)
+    return data_dir
+
+
+def sent_summary(db) -> str:
+    """The summary_text the relay is sent with the offer just made: what Muse
+    says and the approval page shows."""
+    relay = FakeRelay()
+    service.flush_outbox(db, relay)
+    [body] = [b for b in relay.notified if b["kind"] == "ready"]
+    return body["summary_text"]
+
+
+def skipped_because(db, review_id: int) -> str:
+    [skipped] = [a for a in store.audit_log(db, review_id) if a["action"] == "offer_line_skipped"]
+    return skipped["detail"]
+
+
+def test_muse_spark_writes_a_muse_offers_line_and_the_relay_gets_it_as_its_summary(db, muse_on):
+    meta = FakeMeta(db.ledger())
+    job = finished_job(db, muse_on, hint="Blue and Gold", credit="Footage: a notice")
+    review = store.get_review(db, notifier.on_job_finished(db, job, "done", meta=meta))
+    assert [c[1] for c in meta.calls] == ["captions", "offer_line"]  # one small request for the line
+    [(_, _, job_id, messages)] = [c for c in meta.calls if c[1] == "offer_line"]
+    assert job_id == job["id"]
+    assert "one-line summary" in messages[0]["content"]
+    assert "No hashtags, no links, no emojis" in messages[0]["content"]
+    told = json.loads(messages[1]["content"])
+    assert told["clip_count"] == 5 and told["counts"] == "2 dunks, 1 three, 1 block and 1 other play"
+    assert told["clips"][0] == {"title": "Poster dunk in the third", "kind": "dunk"}  # best first
+    # Only the clips' titles and plays: no commentary, no hint, no credit line.
+    said = json.dumps(messages)
+    assert "What a poster dunk" not in said and "Blue and Gold" not in said and "notice" not in said
+    assert "whatsapp" not in said.lower()
+    assert review["summary"]["offer_line"] == {"line": LINE, "fingerprint": review["fingerprint"],
+                                               "model": "muse-spark-1.3"}
+    assert offer_line.summary_text(review) == sent_summary(db) == LINE
+    # On the ledger with the captions, in the job's Captions stage.
+    assert db.job_cost(job["id"]) == 0.004
+    from gameday.routes.api import stage_of_call
+
+    assert stage_of_call("muse-spark-1.3", "offer_line") == stage_of_call("muse-spark-1.3", "captions") == "captions"
+
+
+def test_the_line_is_written_with_muse_sparks_captions_off_too(db, muse_on):
+    ra_settings.save(db, {"muse_captions": False})
+    meta = FakeMeta(db.ledger())
+    review_id = notifier.on_job_finished(db, finished_job(db, muse_on), "done", meta=meta)
+    assert [c[1] for c in meta.calls] == ["offer_line"]
+    assert store.get_review(db, review_id)["captions"] == {}  # the clips' own captions
+    assert sent_summary(db) == LINE
+
+
+def test_a_videos_line_is_asked_for_in_plain_words(db, muse_on):
+    ra_settings.save(db, {"basketball_only": False})
+    meta = FakeMeta(db.ledger())
+    job = finished_job(db, muse_on, mode="talk", plays=[("other", "Coach speaks", 70)] * 2)
+    notifier.on_job_finished(db, job, "done", meta=meta)
+    [(_, _, _, messages)] = [c for c in meta.calls if c[1] == "offer_line"]
+    assert "moments" in messages[0]["content"] and "basketball" not in json.dumps(messages).lower()
+    assert json.loads(messages[1]["content"])["clips"][0]["kind"] == "highlight"
+
+
+def test_the_line_is_kept_and_an_offer_of_the_same_clips_reuses_it(db, muse_on):
+    meta = FakeMeta(db.ledger())
+    review_id = notifier.on_job_finished(db, finished_job(db, muse_on), "done", meta=meta)
+    assert sent_summary(db) == LINE
+    store.move(db, review_id, states.EXPIRED, actor="test")
+    again = store.get_review(db, service.ask_again(db, review_id, meta=meta))
+    assert offer_line.summary_text(again) == LINE
+    assert [c[1] for c in meta.calls].count("offer_line") == 1  # asked once
+
+
+def test_the_line_is_cleaned_to_one_line_and_capped():
+    raw = ('  "A monster dunk,\n\ta deep three    and a block!" '
+           '\U0001f525\U0001f3c0\N{ZERO WIDTH JOINER}\N{VARIATION SELECTOR-16}  ')
+    assert offer_line.clean(raw) == "A monster dunk, a deep three and a block"
+    assert offer_line.clean("Big night \U0001f44d\U0001f3fd for the bench…") == "Big night for the bench"
+    assert offer_line.clean("“Two dunks and a block.”") == "Two dunks and a block"
+    assert offer_line.clean("Who saw that poster dunk coming?!") == "Who saw that poster dunk coming"
+    # Quotes come off only when one pair wraps the whole line; an apostrophe isn't a quote.
+    both = '"Poster dunk" leads the way, then a "Corner three"'
+    assert offer_line.clean(both) == both
+    assert offer_line.clean("'Poster dunk' and 'Corner three'") == "'Poster dunk' and 'Corner three'"
+    assert offer_line.clean("‘The guard’s poster dunk’") == "The guard’s poster dunk"
+    assert offer_line.clean("'It's a big night'") == "It's a big night"
+    # A line that isn't a string (only if Meta broke the schema) is empty.
+    assert offer_line.clean(["A poster dunk"]) == offer_line.clean(5) == offer_line.clean(None) == ""
+    for line in (offer_line.clean(raw), offer_line.clean("one\r\ntwo\x0bthree")):
+        assert "\n" not in line and "\t" not in line and "    " not in line
+    review = {"clips": [], "summary": {"offered": 2, "total_clips": 2, "counts": {"dunks": 2}}}
+    assert offer_line.problem("x" * 200, review) == ""
+    assert "longer than 200" in offer_line.problem("x" * 201, review)
+    # Counted as the relay counts (it keeps 300): a character outside the BMP is two.
+    assert "longer than 200" in offer_line.problem("\U00020000" * 101, review)
+
+
+@pytest.mark.parametrize("line, why", [
+    ("", "empty"),
+    ("\U0001f525\U0001f525\U0001f525", "empty"),  # nothing but emoji
+    ("A poster dunk and " + "a lot more " * 20, "longer than 200"),
+    ("Watch them at https://example.com", "link"),
+    ("Big plays, see clipskitty.com", "link"),
+    ("A #poster dunk and a block", "hashtag"),
+    ("3 dunks and a block", "a number the clips don't have"),  # there were 2
+    ("Three dunks and a block", "said 3, a number the clips don't have"),
+    ("2 blocks and a poster dunk", "said 2 blocks, and the clips have 1 block"),
+    ("Two steals and two dunks", "said 2 steals, and the clips have none"),  # none was a steal
+    (["A poster dunk"], "empty"),  # not a string: only if Meta broke the schema
+], ids=["empty", "only-emoji", "too-long", "link", "bare-link", "hashtag", "made-up-number", "number-in-words",
+        "wrong-count", "kind-not-there", "not-a-string"])
+def test_a_line_that_breaks_the_rules_is_not_used_and_the_counts_go_instead(db, muse_on, line, why):
+    meta = SaysLine(line, ledger=db.ledger())
+    review_id = notifier.on_job_finished(db, finished_job(db, muse_on), "done", meta=meta)
+    assert sent_summary(db) == COUNTED
+    assert why in skipped_because(db, review_id)
+    assert offer_line.line_of(store.get_review(db, review_id)) == ""  # nothing kept
+
+
+def test_a_number_the_counts_or_a_title_hold_is_allowed(db, muse_on):
+    plays = [("dunks", "Dunk at 7 seconds left", 90), ("dunks", "Dunk", 80), ("threes", "Three", 70)]
+    meta = SaysLine("2 dunks, one with 7 seconds left, and a three", ledger=db.ledger())
+    notifier.on_job_finished(db, finished_job(db, muse_on, plays=plays), "done", meta=meta)
+    assert sent_summary(db) == "2 dunks, one with 7 seconds left, and a three"
+
+
+def test_numbers_are_digits_and_the_words_two_to_twenty_before_a_plural_noun():
+    def said(text):
+        return [(n, what) for n, what, _ in offer_line.numbers(text)]
+
+    assert said("Two poster dunks and a corner three") == [(2, "dunks")]
+    assert said("3 clips led by two dunks") == [(3, "*"), (2, "dunks")]
+    assert said("Twenty seconds left, 2 clutch shots and 1 three") == [(20, ""), (2, "clutch"), (1, "threes")]
+    assert said("THREE big BLOCKS") == [(3, "blocks")]
+    # "Three-pointer" is the play, in words or digits; the number before it counts threes.
+    assert said("two three-pointers, a 3-pointer and two 3 pointers") == [(2, "threes"), (2, "threes")]
+    # So are "3s", "3's" and three-point shots or buckets, but a three-point play is an and-one.
+    assert said("Two 3s, two 3's and two three-point shots") == [(2, "threes")] * 3
+    assert said("Two 3-point buckets and two three-point plays") == [(2, "threes"), (2, "*")]
+    # A word with "of" or a comma before its noun is no number; digits inside a word ("4th") are.
+    assert said("Two of the dunks and two, then a block in the 4th") == [(4, None)]
+    # "Three" is a play too: a number only before a kind of play or clips, highlights, plays or moments.
+    assert said("A corner three steals the show") == said("The corner three caps it") == said("three") == []
+
+
+#: An offer of three clips: two dunks and a three.
+THREE_CLIPS = {
+    "clips": [{"title": "Poster dunk in the third", "label": "Poster dunk"},
+              {"title": "Alley-oop in the third", "label": "Alley-oop"},
+              {"title": "Corner three in the third", "label": "Corner three"}],
+    "summary": {"offered": 3, "total_clips": 3, "counts": {"dunks": 2, "threes": 1}},
+}
+
+
+@pytest.mark.parametrize("line", [
+    "Two poster dunks and a corner three",
+    "3 clips led by two dunks",
+    "2 dunks and 1 three",
+    "1 poster dunk, 1 alley-oop and a corner three",  # a word between: it may be fewer
+    "Two dunks and a three-pointer from the corner",
+    "Two dunks and a three-point shot from the corner",
+    "The corner three caps two big dunks",
+])
+def test_a_line_whose_numbers_match_the_counts_is_used(line):
+    assert offer_line.problem(line, THREE_CLIPS) == ""
+
+
+@pytest.mark.parametrize("line, why", [
+    ("3 dunks", "said 3 dunks, and the clips have 2 dunks"),  # 3 is how many clips, not dunks
+    ("Three dunks", "said 3 dunks, and the clips have 2 dunks"),
+    ("Three poster dunks and a corner three", "said 3 dunks"),  # a word between: never more
+    ("Two threes and a dunk", "said 2 threes, and the clips have 1 three"),
+    ("Two 3-pointers and a dunk", "said 2 threes"),
+    ("Five dunks lead the way", "said 5, a number the clips don't have"),
+    ("Twenty seconds of dunks", "said 20, a number the clips don't have"),
+    ("Two dunks and 3 blocks", "said 3 blocks, and the clips have none"),  # a kind of play none of them is
+    ("Two steals and two dunks", "said 2 steals, and the clips have none"),
+    ("Two 3s and two dunks", "said 2 threes, and the clips have 1 three"),  # "3s" are threes, not the number 3
+    ("Two 3's and two dunks", "said 2 threes"),
+    ("Two three-point shots and two dunks", "said 2 threes"),
+])
+def test_a_wrong_count_in_digits_or_words_is_not_used(line, why):
+    assert why in offer_line.problem(line, THREE_CLIPS)
+
+
+#: An offer of two clips, both threes.
+TWO_THREES = {
+    "clips": [{"title": "Corner three", "label": "Corner three"}, {"title": "Logo three", "label": "Logo three"}],
+    "summary": {"offered": 2, "total_clips": 2, "counts": {"threes": 2}},
+}
+
+
+@pytest.mark.parametrize("line", ["Two 3s from deep", "Two 3's from deep", "Two three-point shots from deep"])
+def test_3s_and_three_point_shots_are_counted_as_threes(line):
+    assert offer_line.problem(line, TWO_THREES) == ""
+
+
+def test_without_a_key_or_when_muse_spark_fails_the_offer_says_the_counts(db, muse_on):
+    notifier.on_job_finished(db, finished_job(db, muse_on), "done")  # no Meta key: nothing is asked
+    assert sent_summary(db) == COUNTED
+    failing = FakeMeta(db.ledger(), fail=MetaError("Muse Spark answered 503.", status=503))
+    review_id = notifier.on_job_finished(db, finished_job(db, muse_on, title="Blue vs Red"), "done", meta=failing)
+    assert sent_summary(db) == COUNTED
+    assert skipped_because(db, review_id) == "Muse Spark answered 503."
+    assert store.get_review(db, review_id)["state"] == states.NOTIFICATION_SENT  # the offer went all the same
+
+
+def test_no_line_is_asked_for_a_judges_game(db, muse_on):
+    meta = FakeMeta(db.ledger())
+    job = finished_job(db, muse_on, title="Judged")
+    db.conn.execute("UPDATE jobs SET created_by = 'judge' WHERE id = ?", (job["id"],))
+    db.conn.commit()
+    # It is never offered; asked directly, no line is asked for it either.
+    assert notifier.on_job_finished(db, db.get_job(job["id"]), "done", meta=meta) is None
+    assert meta.calls == []
+    review_id = notifier.offer(db, job_id=job["id"], video_id=job["video_id"], title="Judged",
+                               clips=notifier.clips_of_job(db, job["id"]), meta=meta)
+    assert offer_line.write(db, review_id, meta) == access.NOT_OFFERED
+    assert "offer_line" not in [c[1] for c in meta.calls]
+    assert offer_line.summary_text(store.get_review(db, review_id)) == COUNTED
 
 
 # ---- the credit line ----------------------------------------------------------------------
@@ -386,10 +621,9 @@ def test_muse_sparks_captions_end_with_the_credit_line_and_spark_is_never_shown_
     meta = FakeMeta(db.ledger())
     job = finished_job(db, on, hint="Blue and Gold", credit=CREDIT)
     review = store.get_review(db, notifier.on_job_finished(db, job, "done", meta=meta))
-    [(_, purpose, _, messages)] = meta.calls
-    assert purpose == "captions"
-    told = " ".join(m["content"] for m in messages)
-    assert "DVIDS" not in told and "endorsement" not in told  # never asked to write or reword it
+    assert [c[1] for c in meta.calls] == ["captions", "offer_line"]
+    told = " ".join(m["content"] for c in meta.calls for m in c[3])
+    assert "DVIDS" not in told and "endorsement" not in told  # never asked to write or reword it, nor shown it
     entry = review["clips"][0]
     text = captions.texts_for(review, db.get_clip(entry["clip_id"]), entry)
     assert text["source"] == "muse_spark" and text["title"] == "Muse: Poster dunk"
@@ -1064,6 +1298,7 @@ def test_usage_counts_the_meta_models_from_the_ledger(db, on):
     meta = FakeMeta(db.ledger())
     notifier.on_job_finished(db, finished_job(db, on), "done", meta=meta)
     got = usage.summary(db)
-    assert got["muse_spark"] == {"requests": 1, "prompt_tokens": 900, "cached_tokens": 0, "completion_tokens": 300,
-                                 "usd": 0.002}
-    assert got["muse_voice"]["requests"] == 0 and got["estimated_usd"] == 0.002
+    # The captions and the offer's line.
+    assert got["muse_spark"] == {"requests": 2, "prompt_tokens": 1800, "cached_tokens": 0, "completion_tokens": 600,
+                                 "usd": 0.004}
+    assert got["muse_voice"]["requests"] == 0 and got["estimated_usd"] == 0.004
