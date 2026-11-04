@@ -18,16 +18,20 @@ reuses it. The call is on the usage ledger with the job's other calls, in
 its Captions stage.
 
 What comes back is cleaned (clean): one line, with no tabs or runs of
-spaces, no emoji, no quotes around the whole of it, and no full stop or
-other punctuation at its end, as Muse's list puts a full stop after it.
+spaces and no emoji. Quotes come off when one pair wraps all of it, then
+any . ! ? ; : , or … at its end, as Muse's list puts a full stop after it.
 Then it is checked (problem). It is not used when it isn't a string, is
 empty or longer than MAX_UNITS, or holds a link or a hashtag. Nor is it
 when it says a number the clips don't give: the counts, how many clips
 there are, or a number in a clip's title or label. Nor when a number right
-before a kind of play the counts have isn't that kind's count, as "3 dunks"
-or "Three dunks" when there were two; with a word or two between ("two
-poster dunks"), it may be fewer, never more. Numbers are digits, and the
-words two to twenty before a plural noun (numbers). Without a line, as with
+before a kind of play isn't that kind's count, as "3 dunks" or "Three
+dunks" when there were two, or "Two steals" when there were none; with a
+word or two between ("two poster dunks"), it may be fewer, never more.
+Numbers are digits, and the words two to twenty before a plural noun, but
+"three" (a play too) only before a kind of play or clips, highlights,
+plays or moments, and never after "a" or "an" (numbers). "3-pointers",
+"3s", "3's" and three-point shots or buckets are threes, not the number 3;
+a "three-point play" is an and-one, not a three. Without a line, as with
 no key or when Muse Spark fails, the offer carries the counted summary
 (summary.ready_text). So an offer never waits on a model, and never says
 "3 dunks" when there were two.
@@ -93,6 +97,10 @@ _APOSTROPHE = re.compile(r"(?<=[^\W\d_])['’](?=[^\W\d_])")
 _WORD = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*")
 #: "3-pointer", "three pointers": the play, written one way so its 3 is not read as a number.
 _POINTER = re.compile(r"(?i)\b(?:3|three)[- ]?pointer(s?)\b")
+#: "3s", "3's": threes too, read as "threes".
+_THREES = re.compile(r"(?i)\b3['’]?s\b")
+#: "three-point shots", "a 3-point bucket": threes too, read as "three(s)"; a "three-point play" is an and-one.
+_THREE_POINT = re.compile(r"(?i)\b(?:3|three)[- ]?point[- ](?:shot|bucket)(s?)\b")
 #: The words two to twenty: numbers when a plural noun follows ("two dunks").
 _NUMBER_WORDS = {word: n for n, word in enumerate((
     "two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen "
@@ -143,6 +151,7 @@ def _phrases(text) -> list[list[str]]:
     """The text's words in lower case, in runs that nothing but spaces part:
     "2 dunks, 1 three" is [["2", "dunks"], ["1", "three"]]."""
     text = _POINTER.sub(r"three-pointer\1", str(text or ""))
+    text = _THREE_POINT.sub(r"three\1", _THREES.sub("threes", text))
     phrases, end = [], None
     for m in _WORD.finditer(text):
         if end is None or text[end:m.start()].strip():
@@ -188,7 +197,9 @@ def _after_a(words: list[str], i: int) -> bool:
 def numbers(text) -> list[tuple[int, str | None, bool]]:
     """Each number the text says, with what it counts and whether it comes
     right before that (_counted). Digits are numbers, but for the 3 of
-    "3-pointer". The words two to twenty are numbers when a kind of play or
+    "3-pointer", "3s", "3's" and "3-point shot": those are threes, as are
+    "three-point shots" and "buckets" (not a "three-point play", an
+    and-one). The words two to twenty are numbers when a kind of play or
     another plural noun follows, right after or a word or two later with
     only spaces between: "two dunks", "Three big blocks", "two
     three-pointers", but not "two of the dunks". "Three" is a play too, so
@@ -237,11 +248,12 @@ def problem(line: str, review: dict) -> str:
 
     It can't be empty or longer than MAX_UNITS, or hold a link or a hashtag.
     Every number it says (numbers) must be one given_numbers holds. A number
-    right before a kind of play the counts have ("3 dunks", "two blocks")
-    must be that kind's count, and one with a word or two between ("two
-    poster dunks") may be fewer, never more. Before any other noun (clips,
-    highlights, plays or moments, as in "5 big plays", or a kind of play the
-    counts don't have), any given number goes."""
+    right before a kind of play ("3 dunks", "two blocks") must be that
+    kind's count, 0 when the counts don't have it ("two steals" when none
+    were), and one with a word or two between ("two poster dunks") may be
+    fewer, never more. Before any other noun (clips, highlights, plays or
+    moments, as in "5 big plays", or another plural noun), any given number
+    goes."""
     if not line:
         return "Muse Spark's line was empty."
     if units(line) > MAX_UNITS:
@@ -256,9 +268,10 @@ def problem(line: str, review: dict) -> str:
         return f"Muse Spark's line said {odd[0]}, a number the clips don't have."
     counts = _counts(review)
     for n, what, right_before in said:
-        have = counts.get(what)
+        have = counts.get(what, 0 if what in _PLAYS.values() else None)
         if have is not None and (n > have or (right_before and n != have)):
-            told, there = summary.counts_text({what: n}), summary.counts_text({what: have})
+            told = summary.counts_text({what: n})
+            there = summary.counts_text({what: have}) if have else "none"
             return f"Muse Spark's line said {told}, and the clips have {there}."
     return ""
 

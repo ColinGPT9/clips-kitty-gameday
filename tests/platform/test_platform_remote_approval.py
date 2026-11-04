@@ -476,9 +476,10 @@ def test_the_line_is_cleaned_to_one_line_and_capped():
     ("3 dunks and a block", "a number the clips don't have"),  # there were 2
     ("Three dunks and a block", "said 3, a number the clips don't have"),
     ("2 blocks and a poster dunk", "said 2 blocks, and the clips have 1 block"),
+    ("Two steals and two dunks", "said 2 steals, and the clips have none"),  # none was a steal
     (["A poster dunk"], "empty"),  # not a string: only if Meta broke the schema
 ], ids=["empty", "only-emoji", "too-long", "link", "bare-link", "hashtag", "made-up-number", "number-in-words",
-        "wrong-count", "not-a-string"])
+        "wrong-count", "kind-not-there", "not-a-string"])
 def test_a_line_that_breaks_the_rules_is_not_used_and_the_counts_go_instead(db, muse_on, line, why):
     meta = SaysLine(line, ledger=db.ledger())
     review_id = notifier.on_job_finished(db, finished_job(db, muse_on), "done", meta=meta)
@@ -504,6 +505,9 @@ def test_numbers_are_digits_and_the_words_two_to_twenty_before_a_plural_noun():
     assert said("THREE big BLOCKS") == [(3, "blocks")]
     # "Three-pointer" is the play, in words or digits; the number before it counts threes.
     assert said("two three-pointers, a 3-pointer and two 3 pointers") == [(2, "threes"), (2, "threes")]
+    # So are "3s", "3's" and three-point shots or buckets, but a three-point play is an and-one.
+    assert said("Two 3s, two 3's and two three-point shots") == [(2, "threes")] * 3
+    assert said("Two 3-point buckets and two three-point plays") == [(2, "threes"), (2, "*")]
     # A word with "of" or a comma before its noun is no number; digits inside a word ("4th") are.
     assert said("Two of the dunks and two, then a block in the 4th") == [(4, None)]
     # "Three" is a play too: a number only before a kind of play or clips, highlights, plays or moments.
@@ -525,6 +529,7 @@ THREE_CLIPS = {
     "2 dunks and 1 three",
     "1 poster dunk, 1 alley-oop and a corner three",  # a word between: it may be fewer
     "Two dunks and a three-pointer from the corner",
+    "Two dunks and a three-point shot from the corner",
     "The corner three caps two big dunks",
 ])
 def test_a_line_whose_numbers_match_the_counts_is_used(line):
@@ -539,9 +544,26 @@ def test_a_line_whose_numbers_match_the_counts_is_used(line):
     ("Two 3-pointers and a dunk", "said 2 threes"),
     ("Five dunks lead the way", "said 5, a number the clips don't have"),
     ("Twenty seconds of dunks", "said 20, a number the clips don't have"),
+    ("Two dunks and 3 blocks", "said 3 blocks, and the clips have none"),  # a kind of play none of them is
+    ("Two steals and two dunks", "said 2 steals, and the clips have none"),
+    ("Two 3s and two dunks", "said 2 threes, and the clips have 1 three"),  # "3s" are threes, not the number 3
+    ("Two 3's and two dunks", "said 2 threes"),
+    ("Two three-point shots and two dunks", "said 2 threes"),
 ])
 def test_a_wrong_count_in_digits_or_words_is_not_used(line, why):
     assert why in offer_line.problem(line, THREE_CLIPS)
+
+
+#: An offer of two clips, both threes.
+TWO_THREES = {
+    "clips": [{"title": "Corner three", "label": "Corner three"}, {"title": "Logo three", "label": "Logo three"}],
+    "summary": {"offered": 2, "total_clips": 2, "counts": {"threes": 2}},
+}
+
+
+@pytest.mark.parametrize("line", ["Two 3s from deep", "Two 3's from deep", "Two three-point shots from deep"])
+def test_3s_and_three_point_shots_are_counted_as_threes(line):
+    assert offer_line.problem(line, TWO_THREES) == ""
 
 
 def test_without_a_key_or_when_muse_spark_fails_the_offer_says_the_counts(db, muse_on):
