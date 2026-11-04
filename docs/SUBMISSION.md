@@ -67,6 +67,14 @@ Only Meta's models are called at runtime. `tests/test_meta_only.py` fails on
 any other AI package, import or model host, and if the app's model list is
 anything but these three. ffmpeg cuts and renders; it is a tool, not a model.
 
+**What calls Meta's models, and what's a regular service:**
+
+| Kind | Parts |
+|---|---|
+| **Meta model calls (AI)** | Muse Voice, Muse Spark and SAM 3.1, through the Meta Model API. Nothing else runs AI. |
+| **Meta services (not AI)** | The Instagram Graph API and Facebook Page Reels, Facebook Login for Business, and the Muse app's custom connector |
+| **Regular services and tools (not AI)** | AWS Lightsail, Caddy, Cloudflare Workers with D1 and KV (the relay), ffmpeg, SQLite, Python, FastAPI. Optional: Google Drive with rclone |
+
 ## Safety
 
 - Nothing is posted without the approval page, the confirm box and the PIN.

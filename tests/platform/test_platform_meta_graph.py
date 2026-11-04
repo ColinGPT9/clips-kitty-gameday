@@ -298,6 +298,16 @@ def test_relay_refusals_become_errors_with_a_next_step(code, meta, kind, words):
     err = meta_graph.classify(code, "That step was not approved.", meta)
     assert isinstance(err, kind)
     assert words in err.message
+    if meta.get("meta_code") or meta.get("meta_subcode"):
+        assert "(Meta error " in err.message  # every Graph refusal keeps Meta's numbers
+
+
+def test_a_permission_refusal_says_where_to_look_when_meta_pauses_the_app():
+    err = meta_graph.classify("graph_error", "",
+                              {"meta_code": 200, "meta_subcode": 0, "platform": "instagram"})
+    assert isinstance(err, AuthRequired)
+    assert err.message.startswith("Instagram refused the permission this needs.")
+    assert "developers.facebook.com" in err.message and err.message.endswith("(Meta error 200).")
 
 
 def test_a_relay_refusal_mid_publish_is_raised_as_that_error(clip_file):

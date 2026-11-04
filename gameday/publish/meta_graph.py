@@ -74,29 +74,36 @@ def classify(code: str, message: str, meta: dict | None = None) -> PublishError:
     m_code = int(meta.get("meta_code") or 0)
     sub = int(meta.get("meta_subcode") or 0)
     platform = str(meta.get("platform") or "Meta").title()
+
+    def numbered(text: str) -> str:
+        # Meta's numbers, never its text: enough to look the refusal up.
+        if not (m_code or sub):
+            return text
+        return f"{text.rstrip('.')} (Meta error {m_code}{f', subcode {sub}' if sub else ''})."
+
     if code in ("not_approved", "expired", "not_connected", "not_registered"):
         return PublishError(message)
     if m_code == 190 or code == "token_expired":
-        return AuthRequired(f"Your {platform} connection has expired. Reconnect it in the dashboard's Setup, "
-                            "under Facebook + Instagram.")
+        return AuthRequired(numbered(f"Your {platform} connection has expired. Reconnect it in the dashboard's "
+                                     "Setup, under Facebook + Instagram."))
     if m_code == 10 or 200 <= m_code <= 299:
-        return AuthRequired(f"{platform} refused the permission this needs. Reconnect the account and "
-                            "allow publishing when Meta asks.")
+        # Seen on 3 Nov 2026: Meta paused the developer account for a confirmation step, which switches its
+        # apps off ("App not active" at sign-in) and turns every publish into a permission refusal.
+        return AuthRequired(numbered(f"{platform} refused the permission this needs. Reconnect the account and "
+                                     "allow publishing when Meta asks. If Meta's sign-in says the app isn't "
+                                     "active, first finish any confirmation Meta asks for on "
+                                     "developers.facebook.com."))
     if m_code in (4, 17, 32, 613) or code == "rate_limited":
-        return RateLimited(f"{platform} asked us to slow down. Try again in a few minutes.")
+        return RateLimited(numbered(f"{platform} asked us to slow down. Try again in a few minutes."))
     if sub == 2207042 or m_code == 9:
-        return UploadLimitExceeded(f"{platform}'s daily publishing limit for this account is reached. "
-                                   "It resets within 24 hours.")
+        return UploadLimitExceeded(numbered(f"{platform}'s daily publishing limit for this account is reached. "
+                                            "It resets within 24 hours."))
     if sub in (2207026, 2207052) or m_code == 352:
-        return VideoRejected(f"{platform} could not use this video's format.")
+        return VideoRejected(numbered(f"{platform} could not use this video's format."))
     if sub in (2207050, 2207051) or m_code == 368:
-        return PublishError(f"{platform} is limiting this account right now, so nothing was posted. "
-                            "Check the account in the app.")
-    text = message or f"{platform} refused the post."
-    if m_code or sub:
-        # Meta's numbers, never its text: enough to look the refusal up.
-        text = f"{text.rstrip('.')} (Meta error {m_code}{f', subcode {sub}' if sub else ''})."
-    return PublishError(text)
+        return PublishError(numbered(f"{platform} is limiting this account right now, so nothing was posted. "
+                                     "Check the account in the app."))
+    return PublishError(numbered(message or f"{platform} refused the post."))
 
 
 class MetaGraph:
