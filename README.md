@@ -1,104 +1,195 @@
 # Clips Kitty Game Day
 
-Clips Kitty Game Day turns a basketball game into vertical highlight clips
-using Meta's models. Before anything is posted to Instagram or Facebook, it
-asks you on your phone.
+[![Clips Kitty Game Day: watch the 2:50 demo on YouTube](docs/media/demo.gif)](https://youtu.be/1_QXVlY6cqE)
+
+**Highlights posted while the game is still trending.** Meta's models cut
+vertical clips that follow the ball, and nothing goes out to Instagram or
+Facebook until you approve it on your phone.
+
+- **[Watch the 2:50 demo on YouTube](https://youtu.be/1_QXVlY6cqE)**
+- **Try it, with no account to make:** https://18-190-220-192.sslip.io, user
+  `judge`, with the password in the hackathon submission.
+  [What judges can do](docs/SUBMISSION.md#how-to-try-it)
+- **Built for the Meta Global AI Developer Hackathon**, Indie track,
+  problem statement *Build for Your World*.
+- **Open source**, AGPL-3.0-or-later.
 
 ## What existed before this event, and what was built during it
 
 - **Before this event (not in this repository):** [Clips Kitty](https://github.com/ColinGPT9/clips-studio),
-  a desktop clipping app with its own local vision models. It is not part of
-  this repository, and nothing here depends on it.
+  my desktop clipping app for streamers, with its own local vision models. It
+  is not part of this entry, and nothing here depends on it.
 - **Built during the event:** everything in this repository.
   - The phone relay (`meta-relay/`), the approval flow and the Instagram and
     Facebook publishing were written from 29 Oct to 2 Nov 2026 for this
     hackathon, on an event branch, and brought here.
-  - The web app and its Meta-only engine were written here from 3 Nov 2026.
+  - The web app and its Meta-only engine were written here from the night of
+    2 Nov 2026.
+- [PROVENANCE.md](PROVENANCE.md) lists every imported file with its source
+  commit and date. CI fails on any block of five lines of code shared with
+  Clips Kitty as it was before the event.
 
-  [PROVENANCE.md](PROVENANCE.md) lists every imported file with its source
-  commit and date.
+## The story
 
-## The Meta models it calls, and nothing else
+I'm a Toronto Raptors fan, and I was inspired by the Instagram page House of
+Highlights. Imagine you're the social media manager for an NBA team. You're
+at the game, not at an editing desk, and the clips need to go out while
+people are still talking about it.
 
-| Model | What it does here |
+| The usual way: hours | With Game Day: minutes |
 |---|---|
-| Muse Voice (`muse-voice-transcribe-1.0`) | listens to the commentary |
-| Muse Spark (`muse-spark-1.3`) | picks the plays, and writes the titles, the captions and each offer's one-line summary |
-| SAM 3.1 (`sam-3.1`, hosted by Meta) | follows the ball for the 9:16 crop |
+| The footage gets recorded | The first quarter lands in a shared folder |
+| Staff review it | Meta's models find the plays and cut them |
+| An editor cuts it at a computer | You approve each post on your phone |
+| Posted hours later, after the buzz | Posted while the game is still trending |
 
-ffmpeg cuts and renders the clips. It is a tool, not a model.
+- **More reach and ad value for the team:** a highlight is worth the most
+  while people are still talking about the game.
+- **The manager stays at the game:** they approve each post with their PIN
+  instead of editing at a computer.
+- **More sports content on Meta's platforms:** more teams can post more Reels
+  on Instagram and Facebook, for about 80 cents of Meta usage per 45-minute
+  game.
 
-### What calls Meta's models, and what's a regular service
+## How it meets the judging rubric
+
+### Impact
+
+- **Who it's for:** whoever runs a team's Instagram and Facebook, and any
+  league, school or creator who can't keep an editor at the arena.
+- **What it changes:** posts go out in minutes, not hours. On 4 Nov a
+  4-minute piece of a game went into the shared folder, the server found it
+  by itself, and 4 vertical clips were ready about six minutes after the
+  upload. One went out on Instagram and Facebook from a phone
+  ([TEST_LOG.md](docs/TEST_LOG.md)).
+- **Build for Your World:** clipping is the world I know. I built Clips Kitty
+  for streamers before this event, and Game Day brings Meta's models into the
+  job of a team's social media manager.
+
+### Use of Meta AI tooling
+
+- **Three Meta models in one pipeline, each doing a person's job:**
+  - **Muse Voice Transcribe** writes down what the announcers say, with times.
+  - **Muse Spark** reads it and picks the plays worth posting, held to a
+    strict JSON schema: each play's window, kind of play, score and the
+    commentary behind it. It writes each clip's title and caption, and the
+    one-line summary that the phone alert, Muse and the approval page show.
+    That line is checked before it's used, so it can't name a count the clips
+    don't have.
+  - **SAM 3.1** (hosted by Meta) finds the ball through each play, so the 9:16
+    crop follows the action. Every clip says how much of it followed the ball.
+- **Muse, Meta's agent app,** reaches the app through a custom connector I
+  built: an MCP server with six tools. Muse says what's ready, hands over the
+  approval link and says what got posted. No tool can approve or post.
+- **Meta's Graph API** posts Instagram Reels and Facebook Page Reels.
+- **What surprised me:** I expected a basketball-trained detector to beat a
+  general model at finding the ball. On an offline test of 1,170 frames of the
+  demo game, SAM 3.1 found the ball on 60% of them, against 32% for E-BARD, a
+  YOLOv8 model trained on basketball. Near the rim it was 77 of 78 frames
+  against 11
+  ([how it compares](docs/SUBMISSION.md#how-sam-31-compares-and-whats-next)).
+
+### Technical depth and execution
+
+- **Nothing posts without you:** the approval page, the confirm box and your
+  PIN. The PIN is never given to Muse or any assistant.
+- **The Meta tokens never touch the server.** Meta's app secret and the
+  account tokens live only on the relay. The relay never calls the app; the
+  app only calls out.
+- **Every Meta call is budgeted:** it checks a spending limit first and is
+  logged with its estimated cost. The dashboard shows each stage's time and
+  cost as it runs.
+- **It fails safe:** without a key, or when a call fails, a run still
+  finishes on simple fallbacks (loudness picks, a centre crop) and says so.
+- **Judges get their own login.** It can upload and look; every other route
+  is refused by default, and a judge's game is never offered on the owner's
+  phone.
+- **The shared folder is synced read-only.** A file is only clipped once it
+  has fully arrived, and never twice.
+- **Tested:** 571 Python tests pass in CI on Windows (568 on Ubuntu, where 3
+  Windows-only tests are skipped) and 105 relay tests. CI also runs a check
+  that fails on any AI other than Meta's, and a provenance check that fails on
+  any code from before the event. [SECURITY.md](docs/SECURITY.md) covers
+  what protects each step.
+
+### Demo
+
+- **The [2:50 video](https://youtu.be/1_QXVlY6cqE) is one real run:** the game
+  into the shared folder, each model's stage, the phone alert, Muse, the PIN,
+  and the Reels going up.
+- **Try it yourself** on the hosted dashboard with the judge login, with
+  nothing to sign up for ([how](docs/SUBMISSION.md#how-to-try-it)).
+- **The posts are real:** [@clipskitty2 on Instagram](https://www.instagram.com/clipskitty2/)
+  and its Facebook Page.
+
+## What calls Meta's models, and what's a regular service
 
 | Kind | Parts |
 |---|---|
-| **Meta model calls (AI)** | Muse Voice, Muse Spark and SAM 3.1, through the Meta Model API. Muse Spark also writes the one-line summary of each offer that Muse reads out, the approval page shows and the phone alert carries. Nothing else in the project runs AI. |
-| **Meta services (not AI)** | The Instagram Graph API and Facebook Page Reels (posting), Facebook Login for Business (connecting the Page), and the Muse app's custom connector (Muse asks what's ready) |
-| **Regular services and tools (not AI)** | AWS Lightsail (the server), Caddy (HTTPS), Cloudflare Workers with D1 and KV (the phone relay), ffmpeg (cutting and rendering), SQLite (the app's data), Python, FastAPI. Optional: Google Drive with rclone (dropping games into a folder), ntfy (phone alerts) |
+| **Meta model calls (AI)** | Muse Voice Transcribe (`muse-voice-transcribe-1.0`), Muse Spark (`muse-spark-1.3`) and SAM 3.1 (`sam-3.1`, hosted by Meta), through the Meta Model API. Nothing else in the app runs AI. |
+| **Meta apps and platforms** | Muse, Meta's agent app (it asks the app what's ready, through the custom connector). The Instagram Graph API and Facebook Page Reels (posting), and Facebook Login for Business (connecting the Page): not AI. |
+| **Regular services and tools (not AI)** | AWS Lightsail (the server), sslip.io (its address), Caddy with a Let's Encrypt certificate (HTTPS), Cloudflare Workers with D1 and KV (the phone relay and approval page), ffmpeg (cutting and rendering), SQLite, Python and FastAPI. Optional: Google Drive with rclone (the shared folder), and ntfy (phone alerts). |
 
 `tests/test_meta_only.py` fails the build if any other AI package, import or
-model host appears.
-
-## What it does
-
-- **Give it a game.** Drop a video file on the dashboard, copy it into a
-  watched folder, or put it in a Google Drive folder: the server checks the
-  folder every minute, read-only (`scripts/setup-drive-sync.sh`).
-- **It finds the plays.** Muse Voice writes down the commentary with its
-  times. Muse Spark reads it and picks the plays: dunks, threes, blocks,
-  steals, assists, clutch moments, fan reactions and other big moments. Each
-  clip gets a title, a score and the commentary that made Muse Spark pick it.
-- **It follows the ball.** SAM 3.1 finds the ball in each play, and the 9:16
-  crop moves with it. Each clip says how much of it followed the ball, and
-  **How it follows the ball** shows SAM's box and the crop on a frame.
-- **It asks before posting.** When a game is done, the clips are offered on
-  your phone. Ask Muse what's ready and it hands you the link, and the
-  approval page asks for your PIN. Only the clips and places you tick go up, as Instagram Reels
-  and Facebook Page Reels.
-
-Options: Basketball or Talk mode, clips per game (1 to 12), "Teams or
-players" (a hint for Muse Spark), title cards, and a credit line added to
-every caption (for footage you don't own, like the demo game's DVIDS notice).
+model host appears in the app.
 
 ## How it works
 
 ```mermaid
 flowchart TD
-    F["Game video<br/>uploaded, or copied into a watched folder"]
-    subgraph APP["The app: one Python process"]
-        V["Muse Voice<br/>the commentary, with times"]
-        S["Muse Spark<br/>picks the plays · titles · captions<br/>each offer's one-line summary"]
-        M["SAM 3.1<br/>finds the ball in each play"]
-        R["ffmpeg<br/>cuts and renders each clip at 9:16"]
-        O["The offer<br/>the game's best clips"]
-        C["Checks the approval<br/>sends the approved files"]
+    subgraph LEGEND["Legend"]
+        direction LR
+        L1["Meta AI"]:::metaai
+        L2["Meta platform, not AI"]:::metaplat
+        L3["Regular service or tool, not AI"]:::regular
     end
-    subgraph RL["Your relay: one Cloudflare Worker"]
-        Q["Offers · the PIN check · Meta's tokens"]
+
+    IN["Game footage<br/>a shared folder: Google Drive, synced read-only<br/>or an upload on the dashboard"]:::regular
+
+    subgraph APP["The app: one Python process, on an AWS Lightsail server"]
+        V["Muse Voice Transcribe<br/>the commentary, with times"]:::metaai
+        S["Muse Spark<br/>picks the plays · titles · captions<br/>the offer's one-line summary"]:::metaai
+        M["SAM 3.1<br/>finds the ball in each play"]:::metaai
+        R["ffmpeg<br/>cuts each clip at 9:16"]:::regular
+        O["The offer<br/>the game's best clips"]:::regular
+        C["Sends the approved clips"]:::regular
     end
-    subgraph PH["On your phone"]
-        MU["Muse<br/>what's ready · the link · what got posted"]
-        AP["The approval page<br/>clips · places · confirm · PIN"]
+
+    N["ntfy<br/>the phone alert"]:::regular
+
+    subgraph RELAY["Your relay: a Cloudflare Worker"]
+        Q["Offers · the PIN check · Meta's tokens"]:::regular
     end
-    G["Graph API"]
-    IG["Instagram Reels"]
-    FB["Facebook Page Reels"]
-    F --> V --> S --> M --> R --> O
-    O -->|signed, outbound only| Q
+
+    subgraph PHONE["Your phone"]
+        AL["Highlights ready<br/>with Muse Spark's line"]:::regular
+        MU["Muse, Meta's agent app<br/>what's ready · the link · what got posted"]:::metaai
+        AP["The approval page<br/>watch · tick · confirm · PIN"]:::regular
+    end
+
+    G["Graph API"]:::metaplat
+    IG["Instagram Reels"]:::metaplat
+    FB["Facebook Page Reels"]:::metaplat
+
+    IN --> V --> S --> M --> R --> O
+    O -->|"alert"| N --> AL
+    O -->|"signed, outbound only"| Q
     Q --> MU
-    MU -->|the link| AP
-    AP -->|approve, with the PIN| Q
-    Q -.->|the app collects the decision| C
-    C -->|through the relay| G
+    MU -->|"the approval link"| AP
+    AP -->|"approve, with the PIN"| Q
+    Q -.->|"the app collects the decision"| C
+    C -->|"through the relay"| G
     G --> IG
     G --> FB
-    classDef meta fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
-    class V,S,M,MU,G,IG,FB meta
+
+    classDef metaai fill:#0866FF,stroke:#0049B7,color:#ffffff,font-weight:bold
+    classDef metaplat fill:#DCE8FF,stroke:#0866FF,color:#0B2A66
+    classDef regular fill:#EEF0F3,stroke:#6B7280,color:#111827
 ```
 
-**Blue: Meta's models and products.** The models are Muse Voice, Muse Spark
-and SAM 3.1, the only AI this app calls. The products are Muse, the Graph
-API, Instagram and Facebook.
+**Blue is Meta AI:** the three models the app calls, and Muse. **Light blue
+is a Meta platform** (the Graph API, Instagram and Facebook). **Grey is a
+regular service or tool**, with no AI in it.
 
 - **The app** (`gameday/`) is one Python process: the dashboard (plain HTML,
   CSS and JavaScript), the HTTP API in [docs/API.md](docs/API.md), a job
@@ -106,15 +197,35 @@ API, Instagram and Facebook.
 - **The relay** (`meta-relay/`) is a small Cloudflare Worker you deploy for
   yourself. It holds your Instagram and Facebook sign-in, serves the approval
   page and hosts the Muse connector. The app only ever calls out to it.
-- Every Meta call checks the budget first and is logged with its estimated
-  cost. With no key, or when a call fails, a run still finishes on simple
-  fallbacks (loudness picks, a centre crop) and says so.
 
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## What it does
+
+- **Give it a game.** Drop a video file on the dashboard, copy it into a
+  watched folder, or put it in a shared Google Drive folder: the server checks
+  the folder every minute, read-only (`scripts/setup-drive-sync.sh`).
+- **It finds the plays.** Muse Voice Transcribe writes down the commentary
+  with its times. Muse Spark reads it and picks the plays: dunks, threes,
+  blocks, steals, assists, clutch moments, fan reactions and other big
+  moments. Each clip gets a title, a score and the commentary that made Muse
+  Spark pick it.
+- **It follows the ball.** SAM 3.1 finds the ball in each play, and the 9:16
+  crop moves with it. Each clip says how much of it followed the ball, and
+  **How it follows the ball** shows SAM's box and the crop on a frame.
+- **It asks before posting.** When a game is done, the clips are offered on
+  your phone. Ask Muse what's ready and it hands you the link, and the
+  approval page asks for your PIN. Only the clips and places you tick go up,
+  as Instagram Reels and Facebook Page Reels.
+
+Options: Basketball or Talk mode, clips per game (1 to 12), "Teams or
+players" (a hint for Muse Spark), title cards, and a credit line added to
+every caption (for footage you don't own, like the demo game's DVIDS notice).
+
 ## Quick start
 
-Judges: try the hosted demo first, with nothing to install or sign up for: [How to try it](docs/SUBMISSION.md#how-to-try-it).
+Judges: try the hosted demo first, with nothing to install or sign up for:
+[How to try it](docs/SUBMISSION.md#how-to-try-it).
 
 You need Python 3.11 and ffmpeg.
 
@@ -158,17 +269,15 @@ only models are the three Meta models above.
 3. Connect Facebook. It brings the Instagram account linked to your Page.
 4. Connect Muse ([docs/MUSE_CONNECTOR.md](docs/MUSE_CONNECTOR.md)).
 5. Switch on **Let me approve publishing from my phone**.
+6. Optional: turn on **Phone alerts** in **Setup**. Your phone then buzzes
+   through ntfy (a free app for iPhone and Android, no account) when a game is
+   ready, with Muse Spark's line, or fails, and when a post goes up or fails.
 
-Muse doesn't message you when a game is done: ask it "What highlights are
-ready?" (or set yourself a reminder in Muse), or look at the dashboard. On
-the approval page, watch the clips, tick the ones you want and where they
-go, confirm, and enter your PIN. Muse can hand you the link, but it can't
-approve or post anything. What protects each step:
+When a game is ready, ask Muse "What highlights are ready?" or look at the
+dashboard. On the approval page, watch the clips, tick the ones you want and
+where they go, confirm, and enter your PIN. Muse can hand you the link, but
+it can't approve or post anything. What protects each step:
 [docs/SECURITY.md](docs/SECURITY.md).
-
-Optional: **Phone alerts** in **Setup** pushes an alert to your phone through
-ntfy (a free app for iPhone and Android, no account) when a game is ready or
-fails, and when a post goes up or fails.
 
 ## Costs
 
@@ -177,11 +286,25 @@ Meta's published prices, the same ones the dashboard shows.
 
 | | What it cost me |
 |---|---|
-| **Meta models, per game video** | **About $0.80** for a 45-minute game on the server, which made 8 clips. Muse Voice cost $0.14, Muse Spark $0.03 and SAM 3.1 $0.62-0.66. Captions cost about a cent. Posting the Reels to Instagram and Facebook is free. |
+| **Meta models, per game** | **About $0.80** for a 45-minute game on the server, which made 8 clips. Muse Voice Transcribe cost $0.14, Muse Spark $0.03 and SAM 3.1 $0.62-0.66. Captions cost about a cent. Posting the Reels to Instagram and Facebook is free. |
 | **Hosting: the server** (AWS Lightsail, 2 vCPUs, 4 GB RAM, 80 GB SSD) | **$24 a month** at Lightsail's price, about 80 cents a day. It clipped a 45-minute game in about 14 minutes. |
 | **Hosting: the relay** (Cloudflare Workers) | $0, on Cloudflare's free plan |
 
-The game runs are from 3 Nov 2026; see [docs/TEST_LOG.md](docs/TEST_LOG.md).
+The game runs are in [docs/TEST_LOG.md](docs/TEST_LOG.md).
+
+## What's next
+
+- **Ball tracking trained on basketball.** SAM 3.1 still missed about 40% of
+  the frames in the offline test. Next: fine-tune Muse Glimmer on basketball
+  footage. I didn't have the time this week, or access to a big enough GPU.
+  The comparison used E-BARD (https://github.com/GabrieleGiudic/E-BARD), used
+  unmodified under CC BY 4.0, offline only; the app only ever calls SAM 3.1.
+- **WhatsApp alerts.** The relay has WhatsApp code from the event branch,
+  tested only against a fake Meta. On 3 Nov I set it up with Meta's test
+  number, but Meta locked the new WhatsApp Business Account (error 131031)
+  before the first message went out. Alerts go through ntfy for now.
+- **Threads.** Posting to Threads is next. I couldn't get its API working in
+  time.
 
 ## Tests
 
@@ -193,21 +316,21 @@ python scripts/provenance_check.py --reference path/to/clips-studio
 ```
 
 - `tests/test_meta_only.py` fails if any AI package, import or model host
-  other than Meta's appears, or if the app's model list is anything but the
-  three Meta models above.
+  other than Meta's appears in the app, or if the app's model list is
+  anything but the three Meta models above.
 - `tests/test_static.py` fails if the dashboard has an inline script or
   style, or loads anything from another site.
 - `scripts/provenance_check.py` fails on any block of five lines of code
   shared with Clips Kitty as it was before the event (clips-studio at
   6245e02).
-- CI runs the Python tests on Ubuntu and Windows, the relay's tests on
-  Node 22, and the provenance check.
+- CI runs the Python tests on Windows (571) and Ubuntu (568, with 3
+  Windows-only tests skipped), the relay's 105 tests on Node 22, the server
+  setup script on Ubuntu 24.04, and the provenance check.
 
-Runs on real games, with measured numbers, go in
+Runs on real games, with measured numbers, are in
 [docs/TEST_LOG.md](docs/TEST_LOG.md).
 
 Meta, Muse, SAM, Instagram and Facebook are Meta's trademarks.
-This project is not made or endorsed by Meta.
 
 ## Demo footage
 
