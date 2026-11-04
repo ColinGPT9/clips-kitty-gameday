@@ -8,6 +8,10 @@
 # certificate for it. [max_upload_gb] is the biggest game you can upload
 # (default 4). Keep it well under the server's free disk. To update later,
 # git pull and run this script again.
+#
+# It makes two passwords once, in /etc/gameday.env, and never prints them: the
+# owner's, and the judge login's (user judge, for the event's judges: it can
+# upload and look, but not change settings or post). Running it again keeps both.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -46,6 +50,13 @@ install -d -o "$RUN_USER" -m 755 "$WATCH_DIR"
 if [ ! -f "$ENV_FILE" ]; then
   (umask 077 && printf 'GAMEDAY_PASSWORD=%s\n' "$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')" > "$ENV_FILE")
 fi
+# So is the judge login's (user judge, docs/API.md). An env file made before the judge
+# login existed gets one too. Neither password is ever printed.
+if ! grep -q '^GAMEDAY_JUDGE_PASSWORD=' "$ENV_FILE"; then
+  if [ -n "$(tail -c 1 "$ENV_FILE")" ]; then echo >> "$ENV_FILE"; fi
+  (umask 077 && printf 'GAMEDAY_JUDGE_PASSWORD=%s\n' "$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')" >> "$ENV_FILE")
+fi
+chmod 600 "$ENV_FILE"
 
 cat > /etc/systemd/system/gameday.service <<EOF
 [Unit]
@@ -108,6 +119,8 @@ echo
 echo "Clips Kitty Game Day is running."
 echo "  Dashboard:  https://$DOMAIN/   (user: owner)"
 echo "  Password:   sudo grep GAMEDAY_PASSWORD $ENV_FILE"
+echo "  Judges:     user judge, which can upload and look but not change settings or post"
+echo "              its password: sudo grep GAMEDAY_JUDGE_PASSWORD $ENV_FILE"
 echo "  Games:      upload them on the dashboard, or copy them into $WATCH_DIR"
 echo "  Logs:       journalctl -u gameday -f"
 echo "  Update:     git pull, then run this script again"

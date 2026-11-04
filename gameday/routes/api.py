@@ -11,7 +11,7 @@ from fastapi import HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import ClientDisconnect
 
-from gameday import __version__, media
+from gameday import __version__, access, media
 from gameday import secrets as secret_store
 from gameday.store import fresh_stages, loads, media_url
 from gameday.types import APP_NAME, MODEL_SAM, MODEL_SPARK, MODEL_VOICE, MODELS, STAGES
@@ -87,6 +87,7 @@ def job_view(store, job, *, with_clips: bool = False) -> dict:
         "created_at": job["created_at"],
         "started_at": job["started_at"],
         "finished_at": job["finished_at"],
+        "created_by": job["created_by"],
     }
     if with_clips:
         out["clips_list"] = [clip_view(store, c) for c in store.clips_for_job(job["id"])]
@@ -118,16 +119,22 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
             raise HTTPException(404, "There is no such job.")
         return job
 
+    def judge_may_change(request: Request, job) -> None:
+        """The judge login cancels and retries only the games uploaded with it."""
+        if access.role_of(request) == access.JUDGE and not access.made_by_judge(job):
+            raise HTTPException(403, access.NOT_ITS_GAME)
+
     @app.api_route("/health", methods=["GET", "HEAD"])
     def health():
         return {"ok": True, "app": APP_NAME, "version": __version__}
 
     @app.get("/api/status")
-    def status():
+    def status(request: Request):
         key, from_env = secret_store.meta_key(config, store.secrets)
         running = store.running_job()
         return {
             "version": __version__,
+            "role": access.role_of(request),
             "meta_key": {"saved": bool(key), "from_env": from_env},
             "worker": {"busy": running is not None, "job_id": running["id"] if running is not None else None,
                        "queued": store.queued_count()},
@@ -188,6 +195,7 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
 
     @app.post("/api/upload")
     async def upload(request: Request, filename: str = Query("")):
+        role = access.role_of(request)
         limit = config.max_upload_bytes
         too_big = f"The file is bigger than the {config.max_upload_mb} MB the app takes."
         declared = request.headers.get("content-length")
@@ -223,8 +231,9 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
             def record():
                 video_id = store.add_video(name=name, path=str(target.resolve()), source="upload",
                                            size=stat.st_size, mtime_ns=stat.st_mtime_ns, duration_s=info.duration_s)
-                job_id = store.add_job(video_id, store.job_settings())
-                store.add_event("info", "upload", f"Uploaded {name}: job {job_id} is queued.", job_id=job_id)
+                job_id = store.add_job(video_id, store.job_settings(), created_by=role)
+                how = " with the judge login" if role == access.JUDGE else ""
+                store.add_event("info", "upload", f"Uploaded {name}{how}: job {job_id} is queued.", job_id=job_id)
                 return video_id, job_id
 
             video_id, job_id = await run_in_threadpool(record)
@@ -283,8 +292,9 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
         return job_view(store, job_or_404(job_id), with_clips=True)
 
     @app.post("/api/jobs/{job_id}/cancel")
-    def cancel_job(job_id: int):
+    def cancel_job(job_id: int, request: Request):
         job = job_or_404(job_id)
+        judge_may_change(request, job)
         if job["state"] not in ("queued", "running"):
             raise HTTPException(409, "This job has finished already, so there is nothing to cancel.")
         if store.cancel_job(job_id) is None:
@@ -292,8 +302,9 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
         return job_view(store, store.get_job(job_id))
 
     @app.post("/api/jobs/{job_id}/retry")
-    def retry_job(job_id: int):
+    def retry_job(job_id: int, request: Request):
         job = job_or_404(job_id)
+        judge_may_change(request, job)
         if job["state"] not in ("failed", "cancelled"):
             raise HTTPException(409, "Only a failed or cancelled job can be retried.")
         # Each retry is a whole paid run: a second click, or a second tab, never queues another.
@@ -309,7 +320,8 @@ def install(app, *, store, config, worker, meta_factory, probe=None) -> None:
             st = Path(video["path"]).stat()
             if (st.st_size, st.st_mtime_ns) != (video["size"], video["mtime_ns"]):
                 raise HTTPException(409, "The file changed since it was found. The watcher takes it as a new video.")
-        new_id = store.add_job(video["id"], store.job_settings(), retry_of=job_id)
+        # The same game run again, so it keeps who uploaded it: a judge's game stays off the phone.
+        new_id = store.add_job(video["id"], store.job_settings(), retry_of=job_id, created_by=job["created_by"])
         store.add_event("info", "job", f"Job {job_id} is queued again as job {new_id}.", job_id=new_id)
         worker.wake_jobs()
         return job_view(store, store.get_job(new_id))

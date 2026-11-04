@@ -19,7 +19,7 @@
       <span class="brand-tag">Game Day · Meta models</span>
     </span>
   </a>
-  <span class="top-dot" id="top-dot" data-state="unknown" role="img" aria-label="Checking setup" title="Checking setup"></span>
+  <span class="top-dot owner-only" id="top-dot" data-state="unknown" role="img" aria-label="Checking setup" title="Checking setup"></span>
   <button type="button" class="menu-btn" id="menu-open" aria-label="Open menu" aria-expanded="false" aria-controls="side">
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
   </button>
@@ -55,7 +55,7 @@
       <span>Phone offers</span>
       <span class="count" id="nav-offers" hidden></span>
     </a>
-    <a class="nav-item" href="#setup" data-view="setup">
+    <a class="nav-item owner-only" href="#setup" data-view="setup">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h8.5M17.5 7H20M4 17h2.5M11.5 17H20"/><circle cx="15" cy="7" r="2.5"/><circle cx="9" cy="17" r="2.5"/></svg>
       <span>Setup</span>
       <span class="count warn" id="nav-setup" hidden></span>
@@ -86,6 +86,7 @@
 </aside>
 
 <main class="main" id="main">
+  <p class="judge-line" id="judge-line" hidden><span class="badge-tag info">Judge view</span> <span>Upload a game and watch it run. Settings, phone offers and posting stay with the owner.</span></p>
   <p class="banner" id="banner" role="alert" hidden></p>
 
   <!-- Game day -->
@@ -94,7 +95,7 @@
       <h1 id="h-gameday">Game day</h1>
       <p class="head-pill">spend: <b id="head-spend">—</b></p>
     </header>
-    <p class="callout" id="setup-callout" hidden><span id="setup-callout-text"></span> <a href="#setup">Open Setup</a></p>
+    <p class="callout owner-only" id="setup-callout" hidden><span id="setup-callout-text"></span> <a href="#setup">Open Setup</a></p>
 
     <div class="card">
       <h2>Upload a game</h2>
@@ -111,8 +112,8 @@
         <div class="btns"><button type="button" class="btn small" id="upload-cancel">Stop upload</button></div>
       </div>
       <p class="note" id="upload-note" role="status"></p>
-      <p class="hint"><span id="options-line">Basketball</span> · <a href="#setup">Change</a></p>
-      <p class="hint">Or copy games into a watched folder (Setup).</p>
+      <p class="hint"><span id="options-line">Basketball</span><span class="owner-only"> · <a href="#setup">Change</a></span></p>
+      <p class="hint owner-only">Or copy games into a watched folder (Setup).</p>
     </div>
 
     <div class="card now" id="now" hidden>
@@ -185,11 +186,11 @@
   <section class="view narrow-1024" id="view-offers" aria-labelledby="h-offers" hidden>
     <header class="page-head small-head">
       <h1 id="h-offers">Phone offers</h1>
-      <p class="page-sub">Clips waiting for your OK on your phone, and what got posted.</p>
+      <p class="page-sub" id="offers-sub">Clips waiting for your OK on your phone, and what got posted.</p>
     </header>
-    <p class="callout" id="offers-off" hidden>Phone approval is off. <a href="#setup">Turn it on in Setup</a>.</p>
+    <p class="callout owner-only" id="offers-off" hidden>Phone approval is off. <a href="#setup">Turn it on in Setup</a>.</p>
     <div class="card">
-      <div class="card-head"><h2>Recent offers</h2><button type="button" class="btn small" id="offers-refresh">Check the relay</button></div>
+      <div class="card-head"><h2>Recent offers</h2><button type="button" class="btn small owner-only" id="offers-refresh">Check the relay</button></div>
       <p class="hint" id="offers-phone"></p>
       <p class="empty" id="offers-empty" hidden>No offers yet.</p>
       <div class="offers" id="offers-list"></div>
@@ -199,7 +200,7 @@
   </section>
 
   <!-- Setup -->
-  <section class="view narrow-528" id="view-setup" aria-labelledby="h-setup" hidden>
+  <section class="view narrow-528 owner-only" id="view-setup" aria-labelledby="h-setup" hidden>
     <header class="page-head"><h1 id="h-setup">Setup</h1></header>
 
     <div class="card checklist" id="checklist">

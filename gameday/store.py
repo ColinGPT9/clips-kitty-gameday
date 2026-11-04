@@ -18,6 +18,7 @@ import threading
 import time
 from pathlib import Path
 
+from gameday.config import JUDGE_USER, OWNER_USER
 from gameday.types import STAGES, ApiCall, BudgetExceeded
 
 SCHEMA = """
@@ -75,7 +76,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     retry_of         INTEGER,
     created_at       REAL NOT NULL,
     started_at       REAL,
-    finished_at      REAL
+    finished_at      REAL,
+    created_by       TEXT NOT NULL DEFAULT 'owner'  -- owner | judge: who uploaded the game (access.py)
 );
 
 CREATE TABLE IF NOT EXISTS clips (
@@ -233,6 +235,10 @@ CREATE TABLE IF NOT EXISTS api_calls (
 CREATE INDEX IF NOT EXISTS idx_api_calls_job ON api_calls(job_id);
 """
 
+#: Columns added after their table was first made. A database from before
+#: gets them when it is next opened, each with its default.
+ADDED_COLUMNS = (("jobs", "created_by", "TEXT NOT NULL DEFAULT 'owner'"),)
+
 JOB_STATES = ("queued", "running", "done", "failed", "cancelled")
 STAGE_STATES = ("waiting", "running", "done", "skipped", "failed")
 
@@ -342,6 +348,12 @@ class Store:
             first = sqlite3.connect(self.path, timeout=30)
         first.execute("PRAGMA journal_mode=WAL")
         first.executescript(SCHEMA)
+        for table, column, kind in ADDED_COLUMNS:
+            if column not in {row[1] for row in first.execute(f"PRAGMA table_info({table})")}:
+                try:
+                    first.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+                except sqlite3.OperationalError:  # another start added it a moment ago
+                    pass
         first.commit()
         first.close()
 
@@ -488,11 +500,17 @@ class Store:
 
     # ---- jobs ---------------------------------------------------------------
 
-    def add_job(self, video_id: int, options: dict, *, retry_of: int | None = None) -> int:
+    def add_job(self, video_id: int, options: dict, *, retry_of: int | None = None,
+                created_by: str = OWNER_USER) -> int:
+        """`created_by` is who uploaded the game: "owner" (also every watched
+        folder's games) or "judge" (the judge login, access.py)."""
+        if created_by not in (OWNER_USER, JUDGE_USER):
+            raise ValueError(f"unknown job maker {created_by!r}")
         return int(self._write(
-            "INSERT INTO jobs (video_id, state, stages, options, retry_of, created_at) "
-            "VALUES (?, 'queued', ?, ?, ?, ?)",
-            (int(video_id), json.dumps(fresh_stages()), json.dumps(options), retry_of, time.time())).lastrowid)
+            "INSERT INTO jobs (video_id, state, stages, options, retry_of, created_at, created_by) "
+            "VALUES (?, 'queued', ?, ?, ?, ?, ?)",
+            (int(video_id), json.dumps(fresh_stages()), json.dumps(options), retry_of, time.time(),
+             created_by)).lastrowid)
 
     def get_job(self, job_id: int) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM jobs WHERE id = ?", (int(job_id),)).fetchone()

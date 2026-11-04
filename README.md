@@ -113,6 +113,8 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start
 
+Judges: try the hosted demo first, with nothing to install or sign up for: [How to try it](docs/SUBMISSION.md#how-to-try-it).
+
 You need Python 3.11 and ffmpeg.
 
 ```

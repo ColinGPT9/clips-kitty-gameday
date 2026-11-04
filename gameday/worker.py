@@ -6,7 +6,8 @@
   in DATA_DIR/media/jobs/<id>, its progress written into the job's stages,
   then the "captions" stage: when phone approval is on and the relay is
   registered, the offer is made (summary, Muse Spark captions) for the relay
-  loop to send.
+  loop to send. A game uploaded with the judge login skips it: it is never
+  offered on the owner's phone (access.py).
 * The relay and publish loop, every 2 s: one remote approval pass
   (remote_approval/service.py tick), then at most one upload.
 
@@ -28,6 +29,7 @@ import threading
 import time
 from pathlib import Path
 
+from gameday import access
 from gameday import secrets as secret_store
 from gameday.config import Config
 from gameday.store import Store, fresh_stages, loads
@@ -343,6 +345,9 @@ class Worker:
     # ---- the captions stage: the offer on the phone ----------------------------
 
     def _captions_stage(self, job_id: int, meta: MetaAPI | None, progress: _Progress, clips: int) -> None:
+        if access.made_by_judge(self.store.get_job(job_id) or {}):
+            progress.set("captions", "skipped", access.NOT_OFFERED)
+            return
         progress("captions", 0.0, "Getting the clips ready for your phone")
         try:
             state, note = self._offer(job_id, meta, progress, clips)

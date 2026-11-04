@@ -7,11 +7,13 @@ This is the contract between the platform (routes) and the dashboard
 
 - Everything except `GET /health` needs HTTP Basic auth: user `owner`, and the
   password from `GAMEDAY_PASSWORD` (or the generated one, see Environment).
+  When `GAMEDAY_JUDGE_PASSWORD` is set, user `judge` can sign in too, with
+  less it may do (see The judge login).
   A wrong or missing password gets 401 with `WWW-Authenticate: Basic`.
-  After 10 wrong passwords (not missing ones) from one address within 10
-  minutes, that address gets 429 with `Retry-After` for 15 minutes, whatever
-  password it sends. Behind a proxy on a private address, the address is the
-  last `X-Forwarded-For` entry.
+  After 10 wrong passwords (not missing ones, either user's) from one address
+  within 10 minutes, that address gets 429 with `Retry-After` for 15 minutes,
+  whatever password it sends. Behind a proxy on a private address, the address
+  is the last `X-Forwarded-For` entry.
 - Every POST, PUT, PATCH and DELETE also needs the header `X-Gameday-Action: 1`.
   Without it the answer is 403. That way a page on another site can't post to the app.
 - An error answer is `{"error": "<a sentence for people>"}` with a 4xx or 5xx status.
@@ -23,6 +25,41 @@ This is the contract between the platform (routes) and the dashboard
 
   So the dashboard has no inline scripts, no inline styles, no `style=`
   attributes, and loads nothing from other sites.
+
+## The judge login
+
+The event's judges sign in as `judge`, with the password in
+`GAMEDAY_JUDGE_PASSWORD`. Without that variable there is no judge login. The
+judge can try the app, but can't change its setup or reach the owner's phone
+and accounts.
+
+| The judge may | Routes |
+|---|---|
+| Open the dashboard | `GET /`, `GET /static/{file}` |
+| Read what the dashboard shows | `GET /api/status`, `/api/settings`, `/api/watches`, `/api/jobs`, `/api/jobs/{id}`, `/api/clips`, `/api/usage`, `/api/events`, `/remote-approval/status`, `/remote-approval/reviews`, and the clips under `GET /media/...` |
+| Upload a game | `POST /api/upload` |
+| Cancel or retry a game uploaded with the judge login | `POST /api/jobs/{id}/cancel`, `POST /api/jobs/{id}/retry` |
+
+- Everything else gets 403 before any route runs:
+  `{"error": "The judge login can't change this."}` for a change, and
+  `{"error": "The judge login can't open this."}` for a read. That covers the
+  settings, the Meta key, watched folders, an offer's details, the audit log,
+  and every change under `/remote-approval/` (the relay, the PIN, the Muse
+  key, the accounts and the offers). A route added later is the owner's alone
+  until `gameday/access.py` lists it.
+- Cancelling or retrying the owner's game gets 403: "The judge login can only
+  cancel or retry games uploaded with it."
+- None of these reads returns a secret: no answer ever holds the Meta key,
+  the relay's device secret or a password.
+- A game uploaded with the judge login has `"created_by": "judge"`, and so has
+  a retry of it. It runs on the same models, so `META_BUDGET_USD` caps its
+  spending as before. It is never offered on the owner's phone: its `captions`
+  stage is skipped with the note "Uploaded with the judge login, so it isn't
+  offered on the phone.", and its failure sends no message.
+- The judge's wrong passwords count toward the same lockout as the owner's,
+  and a right judge password forgives none of them.
+- `GET /api/status` says who signed in (`"role"`). For the judge the dashboard
+  shows "Judge view" and hides Setup and every control the judge can't use.
 
 ## Pages and files
 
@@ -38,12 +75,14 @@ This is the contract between the platform (routes) and the dashboard
 ### `GET /api/status`
 ```json
 {"version": "0.1.0",
+ "role": "owner",
  "meta_key": {"saved": true, "from_env": false},
  "worker": {"busy": true, "job_id": 4, "queued": 1},
  "budget": {"limit_usd": 25.0, "spent_usd": 1.37},
  "watches": 1,
  "upload_limit_mb": 4096}
 ```
+`role` is who signed in: `"owner"` or `"judge"` (see The judge login).
 The relay, PIN, Muse and accounts are in `GET /remote-approval/status` (below).
 
 ### Settings
@@ -116,12 +155,15 @@ The dashboard sends it with `XMLHttpRequest` so it can show upload progress.
             "render": {"state": "waiting", "seconds": 0, "cost_usd": 0, "note": ""},
             "captions": {"state": "waiting", "seconds": 0, "cost_usd": 0, "note": ""}},
  "cost_usd": 0.40, "clips": 0, "warnings": [], "error": "",
- "created_at": 1762230000.0, "started_at": 1762230002.0, "finished_at": null}
+ "created_at": 1762230000.0, "started_at": 1762230002.0, "finished_at": null,
+ "created_by": "owner"}
 ```
 - `state` is one of `queued`, `running`, `done`, `failed` or `cancelled`.
 - `stage` is null or one of `voice`, `spark`, `sam`, `render` or `captions`.
 - A stage's `state` is one of `waiting`, `running`, `done`, `skipped` or `failed`.
 - `source` is `upload` or `watch`.
+- `created_by` is `judge` for a game uploaded with the judge login (or a retry
+  of one), and `owner` for every other game, a watched folder's included.
 
 `Clip`:
 ```json
@@ -195,6 +237,7 @@ The app reads these in `gameday/config.py`. `docs/RUNNING.md` explains them for 
 | `HOST` | `127.0.0.1` | |
 | `PORT` | `8080` | |
 | `GAMEDAY_PASSWORD` | generated | the owner password. If unset, one is generated on first start and saved to `DATA_DIR/owner-password.txt` (mode 0600). The log says where it is, never what it is. |
+| `GAMEDAY_JUDGE_PASSWORD` | | the password of user `judge` (see The judge login). If unset, there is no judge login. Shorter than 12 characters, or the same as the owner password, and the app refuses to start. |
 | `GAMEDAY_SECRET_KEY` | generated | the Fernet key that encrypts stored secrets. If unset, it is kept in `DATA_DIR/secret.key` (0600). |
 | `META_API_KEY` | | if set, used instead of the saved key; the dashboard shows "from the environment" |
 | `META_BUDGET_USD` | `25` | Meta calls are refused once estimated spending passes this |

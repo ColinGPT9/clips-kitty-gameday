@@ -325,6 +325,19 @@ b, strong { font-weight: var(--ck-w-semi); }
   font-size: var(--ck-t14);
 }
 
+/* The judge login (role "judge" in GET /api/status): what it can't use isn't
+   shown. The app refuses those changes anyway. */
+body.judge-view .owner-only { display: none !important; }
+.judge-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ck-gap-1) var(--ck-gap-2);
+  font-size: var(--ck-t12);
+  line-height: 16px;
+  color: var(--ck-dim);
+}
+
 .label {
   display: block;
   font-size: var(--ck-t12);

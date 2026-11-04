@@ -49,6 +49,31 @@ jobs:
           curl -fsS http://127.0.0.1:8080/health
           curl -fsSk https://localhost/health
           test "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/api/status)" = 401
+      - name: The judge login reads the API, and can't change the settings
+        run: |
+          judge="$(sudo sed -n 's/^GAMEDAY_JUDGE_PASSWORD=//p' /etc/gameday.env)"
+          test -n "$judge"
+          echo "::add-mask::$judge"
+          role="$(curl -fsSk -u "judge:$judge" https://localhost/api/status | python3 -c 'import json, sys; print(json.load(sys.stdin)["role"])')"
+          test "$role" = judge
+          test "$(curl -sk -o /dev/null -w '%{http_code}' -u "judge:$judge" -X PATCH -H 'X-Gameday-Action: 1' \
+            -H 'Content-Type: application/json' -d '{"max_clips": 3}' https://localhost/api/settings)" = 403
+      - name: Running the script again keeps both passwords
+        run: |
+          before="$(sudo sha256sum /etc/gameday.env)"
+          sudo bash scripts/setup-lightsail.sh localhost > /dev/null
+          test "$(sudo sha256sum /etc/gameday.env)" = "$before"
+      - name: An env file from before the judge login keeps its owner password and gets a judge one
+        run: |
+          owner="$(sudo grep '^GAMEDAY_PASSWORD=' /etc/gameday.env | sha256sum)"
+          sudo sed -i '/^GAMEDAY_JUDGE_PASSWORD=/d' /etc/gameday.env
+          sudo bash scripts/setup-lightsail.sh localhost > /dev/null
+          test "$(sudo grep '^GAMEDAY_PASSWORD=' /etc/gameday.env | sha256sum)" = "$owner"
+          test "$(sudo grep -c '^GAMEDAY_JUDGE_PASSWORD=' /etc/gameday.env)" = 1
+          test "$(sudo stat -c '%a %U' /etc/gameday.env)" = "600 root"
+          judge="$(sudo sed -n 's/^GAMEDAY_JUDGE_PASSWORD=//p' /etc/gameday.env)"
+          echo "::add-mask::$judge"
+          curl -fsSk -o /dev/null -u "judge:$judge" https://localhost/api/status
       - name: The tests on the server's Python
         run: |
           .venv/bin/pip install -q -r requirements-dev.txt
