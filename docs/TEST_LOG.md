@@ -126,3 +126,14 @@ Each run gives:
     Instagram, the post went through. The app's message for that refusal
     now says to finish any confirmation Meta asks for on
     developers.facebook.com (82fc073).
+
+## 3 Nov 2026, late evening: games from Google Drive on the hosted server
+
+- **Where:** the hosted server (AWS Lightsail, 2 vCPU / 4 GB), with `scripts/setup-drive-sync.sh` set up
+  on a read-only Drive sign-in, syncing the Drive folder "Game Day" every minute.
+- **What ran:** a 90-second game file was uploaded to that Drive folder from a browser.
+- **Result:** the server copied it in and queued it as a watched-folder job on its own, with nothing
+  uploaded to the server by hand.
+- **Found:** the first sign-in paste failed. rclone 1.75 on Windows prints the token packed in
+  base64, and the server's rclone 1.60 wants the JSON. `scripts/drive_token.py` now accepts
+  either form (2117d1e).

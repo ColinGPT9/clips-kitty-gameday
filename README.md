@@ -41,8 +41,9 @@ model host appears.
 
 ## What it does
 
-- **Give it a game.** Drop a video file on the dashboard, or copy it into a
-  watched folder.
+- **Give it a game.** Drop a video file on the dashboard, copy it into a
+  watched folder, or put it in a Google Drive folder: the server checks the
+  folder every minute, read-only (`scripts/setup-drive-sync.sh`).
 - **It finds the plays.** Muse Voice writes down the commentary with its
   times. Muse Spark reads it and picks the plays: dunks, threes, blocks,
   steals, assists, clutch moments, fan reactions and other big moments. Each
