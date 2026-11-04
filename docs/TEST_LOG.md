@@ -137,3 +137,44 @@ Each run gives:
 - **Found:** the first sign-in paste failed. rclone 1.75 on Windows prints the token packed in
   base64, and the server's rclone 1.60 wants the JSON. `scripts/drive_token.py` now accepts
   either form (2117d1e).
+
+## 4 Nov 2026, early morning: from Google Drive to a post, on the hosted server
+
+- **Where:**
+  - The hosted server, on AWS Lightsail in Ohio (2 vCPUs, 4 GB RAM), with
+    Meta's real services. It ran as job 6 there.
+  - The owner's iPhone, for the phone alerts (ntfy, through ntfy.sh), the
+    Muse app and the approval page.
+- **Commit:** 8fe166c, with PR #1 merged. Muse Spark now writes each offer's
+  one-line summary, and that line leads the "highlights ready" phone alert.
+- **What ran:**
+  - A 4-minute piece of the demo game, "Navy vs Air Force.mp4" (241 s, cut
+    from the 45-minute second half), was uploaded to the shared Google Drive
+    folder "Game Day" at about 04:19 ET.
+  - The server found it and clipped it, with nothing uploaded to the server
+    by hand.
+  - Then the owner approved one clip on the phone with the PIN, and it was
+    posted.
+- **Result:**
+  - The server found the file at 04:19:59. The job took 5 min 34 s and
+    finished at 04:25:34.
+  - It made 4 clips. Estimated cost: about $0.34 in all.
+  - Share of each clip that followed the ball: 82% (a big moment), 70% (a
+    dunk), 83% (a shot off the glass) and 76% (the 4th clip, titled only
+    "Highlight").
+  - The "highlights ready" alert reached the iPhone. It opened with Muse
+    Spark's line, which counted the 4 clips and named three of the plays.
+  - In the Muse app, "Clips Kitty, what highlights are ready?" listed the
+    offer and handed over the approval link.
+  - On the approval page, the owner ticked the big-moment clip, Instagram
+    Reels and Facebook Page Reels. Then they confirmed, entered the PIN and
+    pressed **Approve and publish**.
+  - Posted: an Instagram Reel on @clipskitty2 and a Facebook Page Reel ("2
+    published"). The "Posted to Instagram + Facebook" alert followed, and
+    Muse answered "what got posted" with that post.
+- **Tests at this commit (CI):**
+  - 571 Python tests on Ubuntu and Windows (4 live tests left out).
+  - 105 relay tests.
+  - ruff and the provenance check, both clean.
+- **Found:** one clip got only the plain title "Highlight". The other three
+  got a title about their play.

@@ -30,10 +30,13 @@ in the submission's private field. No account to make
 
 ## The problem
 
-Highlights travel furthest while people are still talking about the game.
-The person who runs a team's socials is usually at the game, not at a desk
-with an editor. Cutting, reframing for a phone screen and posting each play
-by hand takes too long.
+Highlights travel furthest while the game is still trending. Posts that land
+then get the team more reach. But the person who runs a team's socials is at
+the game, not at an editing desk. Cutting, reframing for a phone screen and
+posting each play by hand takes too long.
+
+With Clips Kitty Game Day, the clips are ready in minutes. They go out once
+that person approves them on their phone, while the game is still trending.
 
 ## What it does
 
@@ -42,9 +45,10 @@ by hand takes too long.
 2. Muse Voice transcribes the commentary. Muse Spark picks the plays and
    writes their titles and captions. SAM 3.1 finds the ball, and ffmpeg cuts
    9:16 clips whose crop follows it.
-3. When the game is done, the clips are offered on your phone. Ask Muse
-   what's ready (it doesn't message you first), or look at the dashboard,
-   and Muse hands you the approval link.
+3. When the game is done, the clips are offered on your phone. With phone
+   alerts on, an alert says so, led by Muse Spark's one-line summary. Ask
+   Muse what's ready (it doesn't message you first), or look at the
+   dashboard, and Muse hands you the approval link.
 4. On the approval page you watch them, tick the ones you want and where
    they go, confirm, and enter your PIN. Only then are they posted, as
    Instagram Reels and Facebook Page Reels, through Meta's Graph API.
@@ -60,7 +64,7 @@ got posted, and the spending against a budget.
 | **SAM 3.1** (`sam-3.1`, hosted by Meta) | Finds the ball in each play, so the 9:16 crop follows it. Each clip records how much of it followed the ball, and the dashboard shows the frame with SAM's box and the crop |
 | **Muse Spark** (`muse-spark-1.3`) | Reads the commentary and picks the moments, held to a strict JSON schema: each play's window, category, score and the commentary behind it. Writes each clip's title and caption, and the one-line summary of each offer that Muse reads out, the approval page shows and the phone alert carries |
 | **Muse Voice** (`muse-voice-transcribe-1.0`) | Transcribes the game's commentary with times, for Muse Spark to read |
-| **The Muse connector** | A custom connector for Muse, Meta's agent app, on the owner's relay: an MCP server with six tools, plus the same tools as HTTPS routes with an OpenAPI description. Muse says what's ready, hands over the approval link, says what got posted, and puts an offer aside or cancels it. No tool approves or posts. Ran in the Muse app on 2 Nov 2026, on the event branch's relay ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)) |
+| **The Muse connector** | A custom connector for Muse, Meta's agent app, on the owner's relay: an MCP server with six tools, plus the same tools as HTTPS routes with an OpenAPI description. Muse says what's ready, hands over the approval link, says what got posted, and puts an offer aside or cancels it. No tool approves or posts. Ran in the Muse app on 2 Nov 2026 on the event branch's relay, and on 4 Nov 2026 with this app on the hosted server ([MUSE_CONNECTOR.md](MUSE_CONNECTOR.md)) |
 | **Graph API Reels** | Instagram Reels (resumable upload, container status, publish, permalink) and Facebook Page Reels (start, upload, finish, status, permalink), made by the relay only for what was approved |
 | **Facebook Login for Business** | Connects the Page and its Instagram account. The tokens stay on the relay |
 
@@ -93,8 +97,8 @@ More in [SECURITY.md](SECURITY.md).
 
 - **This web app on a real game (3 Nov 2026):** a 22.5-minute game made 8
   vertical clips in 227 s on a desktop PC.
-  - Cost: about $0.65 of Meta usage, about 8 cents a clip. Muse Voice
-    $0.07, Muse Spark $0.02, SAM 3.1 $0.56.
+  - Cost: about $0.65 of Meta usage for the game. Muse Voice $0.07, Muse
+    Spark $0.02, SAM 3.1 $0.56.
   - Ball-following: in the 7 clips of live play, SAM 3.1 kept the 9:16
     window on the ball 72-89% of the time. The 8th clip, the celebration
     after the buzzer, followed the players.
@@ -102,20 +106,36 @@ More in [SECURITY.md](SECURITY.md).
 - **The HD demo game (3 Nov 2026):** the second half of Navy vs Air Force at
   the 2024 Armed Forces Men's Basketball Championship (45 minutes, 1080p,
   public domain).
-  - It made 8 clips in 347 s for about $0.87, about 11 cents a clip.
+  - It made 8 clips in 347 s, for about $0.87 of Meta usage.
   - SAM 3.1 kept the window on the ball 43-81% of the time, and on the players the rest.
 - **The same game on the hosted server (3 Nov 2026):** the 45-minute game
   went into the watched folder of an AWS Lightsail server with 2 vCPUs and
-  4 GB RAM. It made 8 clips in about 14 minutes for about $0.80, about 10
-  cents a clip.
+  4 GB RAM. It made 8 clips in about 14 minutes, for about $0.80 of Meta
+  usage.
 - **A live post from the hosted server (3 Nov 2026):** one clip was approved
   on a phone with the PIN and posted as an Instagram Reel and a Facebook
   Page Reel.
+- **From Google Drive to a post, on the hosted server (4 Nov 2026):** at
+  commit 8fe166c.
+  - A 4-minute piece of the demo game was uploaded to a shared Google Drive
+    folder that the server watches. The server found it on its own and made
+    4 clips in 5 min 34 s. SAM 3.1 kept the window on the ball 70-83% of
+    the time.
+  - A phone alert reached the owner's iPhone, led by Muse Spark's one-line
+    summary of the clips.
+  - In the Muse app, "Clips Kitty, what highlights are ready?" listed the
+    offer and handed over the approval link.
+  - On the approval page, one clip was ticked for Instagram Reels and
+    Facebook Page Reels, confirmed and approved with the PIN.
+  - It went up as an Instagram Reel on @clipskitty2 and a Facebook Page
+    Reel. A "Posted to Instagram + Facebook" alert followed, and Muse said
+    what got posted.
 - **Cost to post:** Instagram and Facebook Reels go through Meta's Graph
-  API at no charge. Muse Spark's captions for a one-clip offer cost
-  $0.004.
-- **Tests:** 415 Python tests (on Ubuntu and Windows) and 105 relay tests
-  pass in CI, along with the provenance check, at commit b23ae37.
+  API at no charge. Muse Spark's captions for a game's 8 clips cost about a
+  cent.
+- **Tests:** at commit 8fe166c, 571 Python tests (on Ubuntu and Windows,
+  with 4 live tests left out) and 105 relay tests pass in CI, along with
+  the provenance check.
 - On the event branch, on 1 Nov 2026, the relay and the phone's approval
   page ran live: one clip was approved on a phone with the PIN and posted
   through Meta's APIs as an Instagram Reel and a Facebook Page Reel.
@@ -137,7 +157,7 @@ SAM 3.1, and E-BARD, a YOLOv8n detector trained on basketball.
 
 - An AI reviewer checked the ball calls on the disagreements.
 - The app itself only ever calls SAM 3.1. E-BARD ran in a separate setup for this test only.
-- E-BARD (https://github.com/GabrieleGiudic/E-BARD) was used unmodified under CC BY 4.0.
+- E-BARD (https://github.com/GabrieleGiudic/E-BARD), used unmodified under CC BY 4.0.
 
 **Next: ball tracking trained for basketball.** SAM 3.1 still found no ball
 on about 40% of these frames. The next step is to fine-tune a Meta vision
@@ -153,6 +173,9 @@ highlights are ready.
 - The entry ships with Muse and the approval page as the phone flow, plus a
   phone alert app (ntfy) for "highlights ready".
 - Once the account is reviewed and unlocked, WhatsApp is a setting away.
+
+**Next: posting to Threads.** Threads would join Instagram and Facebook as a
+place to post. I couldn't get its API working in time.
 
 ## Demo footage
 
