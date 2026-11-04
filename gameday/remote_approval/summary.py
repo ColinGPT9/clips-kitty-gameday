@@ -7,8 +7,8 @@ model: a notification that says "3 dunks" when there were two is worse than
 no notification. Muse Spark may add a line of colour when the owner turns
 that on (captions.py). With a Meta key, Muse Spark also writes each offer's
 one-line summary (offer_line.py), and a line giving a number these counts
-and the clips' titles don't hold is not used: the counts are the summary
-then, and whenever there is no line.
+and the clips' titles don't hold, or "3 dunks" when there were two, is not
+used: the counts are the summary then, and whenever there is no line.
 
 An offer is one of two kinds (kind_of): a basketball game, counted by each
 clip's category (gameday.types.CATEGORIES, which the engine sets), or any

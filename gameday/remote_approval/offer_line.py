@@ -17,13 +17,20 @@ offer, so a resend sends the same words and an offer of the same clips
 reuses it. The call is on the usage ledger with the job's other calls, in
 its Captions stage.
 
-What comes back is cleaned (one line, with no tabs or runs of spaces; emoji
-are dropped; no full stop at its end, as Muse's list puts one after it) and
-checked. A line that is empty, longer than MAX_UNITS, or holds a link, a
-hashtag or a number that neither the counts nor a clip's title holds is not
-used. Then, as with no key or when Muse Spark fails, the offer carries the
-counted summary (summary.ready_text). So an offer never waits on a model,
-and never says "3 dunks" when there were two.
+What comes back is cleaned (clean): one line, with no tabs or runs of
+spaces, no emoji, no quotes around the whole of it, and no full stop or
+other punctuation at its end, as Muse's list puts a full stop after it.
+Then it is checked (problem). It is not used when it isn't a string, is
+empty or longer than MAX_UNITS, or holds a link or a hashtag. Nor is it
+when it says a number the clips don't give: the counts, how many clips
+there are, or a number in a clip's title or label. Nor when a number right
+before a kind of play the counts have isn't that kind's count, as "3 dunks"
+or "Three dunks" when there were two; with a word or two between ("two
+poster dunks"), it may be fewer, never more. Numbers are digits, and the
+words two to twenty before a plural noun (numbers). Without a line, as with
+no key or when Muse Spark fails, the offer carries the counted summary
+(summary.ready_text). So an offer never waits on a model, and never says
+"3 dunks" when there were two.
 
 A game uploaded with the judge login is never offered (notifier.py); this
 checks again, and never asks for its line.
@@ -79,6 +86,24 @@ _EMOJI_PARTS = frozenset("\N{ZERO WIDTH JOINER}\N{VARIATION SELECTOR-15}\N{VARIA
                          "\N{COMBINING ENCLOSING KEYCAP}")
 #: Quotes around the whole line: straight, and curly.
 _QUOTES = (('"', '"'), ("'", "'"), ("“", "”"), ("‘", "’"))
+#: A single quote between two letters is an apostrophe ("Smith's"), not a quote.
+_APOSTROPHE = re.compile(r"(?<=[^\W\d_])['’](?=[^\W\d_])")
+
+#: A word: letters and digits, with any apostrophes and hyphens inside it ("Smith's", "three-pointers").
+_WORD = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*")
+#: "3-pointer", "three pointers": the play, written one way so its 3 is not read as a number.
+_POINTER = re.compile(r"(?i)\b(?:3|three)[- ]?pointer(s?)\b")
+#: The words two to twenty: numbers when a plural noun follows ("two dunks").
+_NUMBER_WORDS = {word: n for n, word in enumerate((
+    "two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen "
+    "eighteen nineteen twenty").split(), start=2)}
+#: Each kind of play's names (summary.CATEGORIES), singular and plural, as words, and its category.
+_PLAYS = {**{tuple(name.split()): cid for cid, *names in summary.CATEGORIES for name in names},
+          ("three-pointer",): "threes", ("three-pointers",): "threes"}
+#: Nouns any given number may count: "5 clips", "3 big plays".
+_ANY = frozenset("clip clips highlight highlights play plays moment moments".split())
+#: Words a number's noun is never past: "two of the dunks" doesn't count the dunks.
+_STOP = frozenset("a an and as at but by for from in into of on or plus than that the then to with".split())
 
 
 def facts(review: dict) -> dict:
@@ -95,42 +120,128 @@ def facts(review: dict) -> dict:
 
 def clean(text) -> str:
     """One line: control characters and every run of whitespace become one
-    space, emoji are dropped, quotes around the whole line come off, and so
-    does a full stop at its end (Muse's list puts one after it)."""
+    space, emoji are dropped, and quotes come off when one pair wraps the
+    whole line (not two quoted phrases at its ends). Then any . ! ? ; : , or
+    … at its end goes, as Muse's list puts a full stop after the line. A
+    line that isn't a string (only if Meta broke the schema) is empty."""
     kept = []
-    for ch in str(text or ""):
+    for ch in (text if isinstance(text, str) else ""):
         group = unicodedata.category(ch)
         if group in ("So", "Cf", "Cs", "Co", "Cn") or ch in _EMOJI_PARTS or 0x1F3FB <= ord(ch) <= 0x1F3FF:
             continue  # pictographs and emoji, invisible marks, and the skin tones
         kept.append(" " if group == "Cc" else ch)
     line = re.sub(r"\s+", " ", "".join(kept)).strip()
     for left, right in _QUOTES:
-        if len(line) > 1 and line.startswith(left) and line.endswith(right):
-            line = line[1:-1].strip()
+        inside = line[1:-1]
+        wrapped = len(line) > 1 and line[0] == left and line[-1] == right
+        if wrapped and not any(q in _APOSTROPHE.sub("", inside) for q in (left, right)):
+            line = inside.strip()
     return line.rstrip(" .!?;:,…").strip()
 
 
-def _numbers(text) -> set[int]:
-    return {int(n) for n in re.findall(r"\d+", str(text or ""))}
+def _phrases(text) -> list[list[str]]:
+    """The text's words in lower case, in runs that nothing but spaces part:
+    "2 dunks, 1 three" is [["2", "dunks"], ["1", "three"]]."""
+    text = _POINTER.sub(r"three-pointer\1", str(text or ""))
+    phrases, end = [], None
+    for m in _WORD.finditer(text):
+        if end is None or text[end:m.start()].strip():
+            phrases.append([])
+        phrases[-1].append(m.group().lower())
+        end = m.end()
+    return phrases
+
+
+def _plural(word: str) -> bool:
+    return len(word) > 2 and word.endswith("s") and not word.endswith(("ss", "'s", "’s"))
+
+
+def _counted(words: list[str], i: int) -> tuple[str, bool] | None:
+    """What the number words[i] counts, and whether it comes right before
+    it: a kind of play's category, "*" for clips, highlights, plays or
+    moments, or "" for another plural noun. A word or two may come between
+    ("two poster dunks"); None when no such noun follows, or a number or a
+    word like "of" or "and" (_STOP) comes first."""
+    for j in range(i + 1, min(i + 4, len(words))):
+        for name in (tuple(words[j:j + 2]), (words[j],)):  # "clutch shots", "dunks"
+            if name in _PLAYS:
+                return _PLAYS[name], j == i + 1
+        if words[j] in _ANY:
+            return "*", j == i + 1
+        if words[j] in _STOP or words[j].isdecimal() or words[j] in _NUMBER_WORDS:
+            return None
+        if _plural(words[j]):
+            return "", j == i + 1
+    return None
+
+
+def _after_a(words: list[str], i: int) -> bool:
+    """Is words[i] the play in "a three" or "a corner three"?"""
+    for word in reversed(words[max(0, i - 3):i]):
+        if word in ("a", "an"):
+            return True
+        if word in _STOP or word.isdecimal() or word in _NUMBER_WORDS:
+            return False
+    return False
+
+
+def numbers(text) -> list[tuple[int, str | None, bool]]:
+    """Each number the text says, with what it counts and whether it comes
+    right before that (_counted). Digits are numbers, but for the 3 of
+    "3-pointer". The words two to twenty are numbers when a kind of play or
+    another plural noun follows, right after or a word or two later with
+    only spaces between: "two dunks", "Three big blocks", "two
+    three-pointers", but not "two of the dunks". "Three" is a play too, so
+    it is a number only before a kind of play or clips, highlights, plays or
+    moments, and never after "a" or "an": not in "a corner three steals the
+    show" or "three seals it"."""
+    found = []
+    for words in _phrases(text):
+        for i, word in enumerate(words):
+            if word in _NUMBER_WORDS:
+                what = _counted(words, i)
+                if word == "three" and what and (not what[0] or _after_a(words, i)):
+                    continue  # the play
+                if what:
+                    found.append((_NUMBER_WORDS[word], *what))
+            elif word.isdecimal():
+                found.append((int(word), *(_counted(words, i) or (None, False))))
+            else:  # digits inside a word: "4th", "2-for-2"
+                found += [(int(n), None, False) for n in re.findall(r"\d+", word)]
+    return found
+
+
+def _counts(review: dict) -> dict[str, int]:
+    """How many clips of each kind of play the offer has (summary.counts)."""
+    out = {}
+    for cid, value in ((review.get("summary") or {}).get("counts") or {}).items():
+        try:
+            out[cid] = int(value)
+        except (TypeError, ValueError):
+            pass
+    return out
 
 
 def given_numbers(review: dict) -> set[int]:
     """The numbers the line may say: the counts, how many clips, and any a
-    clip's title or label holds."""
+    clip's title or label says (numbers)."""
     info = review.get("summary") or {}
-    out = {int(info.get("offered") or 0), int(info.get("total_clips") or 0)}
-    for value in (info.get("counts") or {}).values():
-        try:
-            out.add(int(value))
-        except (TypeError, ValueError):
-            pass
+    out = {int(info.get("offered") or 0), int(info.get("total_clips") or 0), *_counts(review).values()}
     for clip in review["clips"]:
-        out |= _numbers(clip.get("title")) | _numbers(clip.get("label"))
+        out |= {n for text in (clip.get("title"), clip.get("label")) for n, _, _ in numbers(text)}
     return out
 
 
 def problem(line: str, review: dict) -> str:
-    """Why this line can't be the offer's summary, or "" when it can."""
+    """Why this line can't be the offer's summary, or "" when it can.
+
+    It can't be empty or longer than MAX_UNITS, or hold a link or a hashtag.
+    Every number it says (numbers) must be one given_numbers holds. A number
+    right before a kind of play the counts have ("3 dunks", "two blocks")
+    must be that kind's count, and one with a word or two between ("two
+    poster dunks") may be fewer, never more. Before any other noun (clips,
+    highlights, plays or moments, as in "5 big plays", or a kind of play the
+    counts don't have), any given number goes."""
     if not line:
         return "Muse Spark's line was empty."
     if units(line) > MAX_UNITS:
@@ -139,9 +250,16 @@ def problem(line: str, review: dict) -> str:
         return "Muse Spark's line held a link."
     if _HASHTAG.search(line):
         return "Muse Spark's line held a hashtag."
-    odd = sorted(_numbers(line) - given_numbers(review))
+    said = numbers(line)
+    odd = sorted({n for n, _, _ in said} - given_numbers(review))
     if odd:
         return f"Muse Spark's line said {odd[0]}, a number the clips don't have."
+    counts = _counts(review)
+    for n, what, right_before in said:
+        have = counts.get(what)
+        if have is not None and (n > have or (right_before and n != have)):
+            told, there = summary.counts_text({what: n}), summary.counts_text({what: have})
+            return f"Muse Spark's line said {told}, and the clips have {there}."
     return ""
 
 

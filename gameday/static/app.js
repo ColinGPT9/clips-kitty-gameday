@@ -1561,7 +1561,7 @@
     keyed($('calls').tBodies[0], recent, (c) => `${c.at}:${c.model}:${c.purpose}:${c.ms}`, () => '1', (c) => cells(h('tr', {},
       h('td', { class: 'when', text: timeOnly(c.at) }),
       h('td', { class: 'model', text: c.model }),
-      h('td', { text: c.purpose + (c.job_id ? ` · game ${c.job_id}` : '') + ` · ${dur((c.ms || 0) / 1000)}` }),
+      h('td', { text: String(c.purpose || '').replace(/_/g, ' ') + (c.job_id ? ` · game ${c.job_id}` : '') + ` · ${dur((c.ms || 0) / 1000)}` }),
       h('td', { class: 'num', text: usd(c.cost_usd) }),
       h('td', { class: c.ok ? 'ok-text' : 'bad-text', title: c.error || '', text: c.ok ? 'OK' : `Failed (${c.status || 'no answer'})${c.error ? ': ' + c.error : ''}` })), callLabels));
 

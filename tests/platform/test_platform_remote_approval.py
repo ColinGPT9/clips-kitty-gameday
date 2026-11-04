@@ -448,6 +448,15 @@ def test_the_line_is_cleaned_to_one_line_and_capped():
     assert offer_line.clean(raw) == "A monster dunk, a deep three and a block"
     assert offer_line.clean("Big night \U0001f44d\U0001f3fd for the bench…") == "Big night for the bench"
     assert offer_line.clean("“Two dunks and a block.”") == "Two dunks and a block"
+    assert offer_line.clean("Who saw that poster dunk coming?!") == "Who saw that poster dunk coming"
+    # Quotes come off only when one pair wraps the whole line; an apostrophe isn't a quote.
+    both = '"Poster dunk" leads the way, then a "Corner three"'
+    assert offer_line.clean(both) == both
+    assert offer_line.clean("'Poster dunk' and 'Corner three'") == "'Poster dunk' and 'Corner three'"
+    assert offer_line.clean("‘The guard’s poster dunk’") == "The guard’s poster dunk"
+    assert offer_line.clean("'It's a big night'") == "It's a big night"
+    # A line that isn't a string (only if Meta broke the schema) is empty.
+    assert offer_line.clean(["A poster dunk"]) == offer_line.clean(5) == offer_line.clean(None) == ""
     for line in (offer_line.clean(raw), offer_line.clean("one\r\ntwo\x0bthree")):
         assert "\n" not in line and "\t" not in line and "    " not in line
     review = {"clips": [], "summary": {"offered": 2, "total_clips": 2, "counts": {"dunks": 2}}}
@@ -465,7 +474,11 @@ def test_the_line_is_cleaned_to_one_line_and_capped():
     ("Big plays, see clipskitty.com", "link"),
     ("A #poster dunk and a block", "hashtag"),
     ("3 dunks and a block", "a number the clips don't have"),  # there were 2
-], ids=["empty", "only-emoji", "too-long", "link", "bare-link", "hashtag", "made-up-number"])
+    ("Three dunks and a block", "said 3, a number the clips don't have"),
+    ("2 blocks and a poster dunk", "said 2 blocks, and the clips have 1 block"),
+    (["A poster dunk"], "empty"),  # not a string: only if Meta broke the schema
+], ids=["empty", "only-emoji", "too-long", "link", "bare-link", "hashtag", "made-up-number", "number-in-words",
+        "wrong-count", "not-a-string"])
 def test_a_line_that_breaks_the_rules_is_not_used_and_the_counts_go_instead(db, muse_on, line, why):
     meta = SaysLine(line, ledger=db.ledger())
     review_id = notifier.on_job_finished(db, finished_job(db, muse_on), "done", meta=meta)
@@ -479,6 +492,56 @@ def test_a_number_the_counts_or_a_title_hold_is_allowed(db, muse_on):
     meta = SaysLine("2 dunks, one with 7 seconds left, and a three", ledger=db.ledger())
     notifier.on_job_finished(db, finished_job(db, muse_on, plays=plays), "done", meta=meta)
     assert sent_summary(db) == "2 dunks, one with 7 seconds left, and a three"
+
+
+def test_numbers_are_digits_and_the_words_two_to_twenty_before_a_plural_noun():
+    def said(text):
+        return [(n, what) for n, what, _ in offer_line.numbers(text)]
+
+    assert said("Two poster dunks and a corner three") == [(2, "dunks")]
+    assert said("3 clips led by two dunks") == [(3, "*"), (2, "dunks")]
+    assert said("Twenty seconds left, 2 clutch shots and 1 three") == [(20, ""), (2, "clutch"), (1, "threes")]
+    assert said("THREE big BLOCKS") == [(3, "blocks")]
+    # "Three-pointer" is the play, in words or digits; the number before it counts threes.
+    assert said("two three-pointers, a 3-pointer and two 3 pointers") == [(2, "threes"), (2, "threes")]
+    # A word with "of" or a comma before its noun is no number; digits inside a word ("4th") are.
+    assert said("Two of the dunks and two, then a block in the 4th") == [(4, None)]
+    # "Three" is a play too: a number only before a kind of play or clips, highlights, plays or moments.
+    assert said("A corner three steals the show") == said("The corner three caps it") == said("three") == []
+
+
+#: An offer of three clips: two dunks and a three.
+THREE_CLIPS = {
+    "clips": [{"title": "Poster dunk in the third", "label": "Poster dunk"},
+              {"title": "Alley-oop in the third", "label": "Alley-oop"},
+              {"title": "Corner three in the third", "label": "Corner three"}],
+    "summary": {"offered": 3, "total_clips": 3, "counts": {"dunks": 2, "threes": 1}},
+}
+
+
+@pytest.mark.parametrize("line", [
+    "Two poster dunks and a corner three",
+    "3 clips led by two dunks",
+    "2 dunks and 1 three",
+    "1 poster dunk, 1 alley-oop and a corner three",  # a word between: it may be fewer
+    "Two dunks and a three-pointer from the corner",
+    "The corner three caps two big dunks",
+])
+def test_a_line_whose_numbers_match_the_counts_is_used(line):
+    assert offer_line.problem(line, THREE_CLIPS) == ""
+
+
+@pytest.mark.parametrize("line, why", [
+    ("3 dunks", "said 3 dunks, and the clips have 2 dunks"),  # 3 is how many clips, not dunks
+    ("Three dunks", "said 3 dunks, and the clips have 2 dunks"),
+    ("Three poster dunks and a corner three", "said 3 dunks"),  # a word between: never more
+    ("Two threes and a dunk", "said 2 threes, and the clips have 1 three"),
+    ("Two 3-pointers and a dunk", "said 2 threes"),
+    ("Five dunks lead the way", "said 5, a number the clips don't have"),
+    ("Twenty seconds of dunks", "said 20, a number the clips don't have"),
+])
+def test_a_wrong_count_in_digits_or_words_is_not_used(line, why):
+    assert why in offer_line.problem(line, THREE_CLIPS)
 
 
 def test_without_a_key_or_when_muse_spark_fails_the_offer_says_the_counts(db, muse_on):

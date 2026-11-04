@@ -23,7 +23,7 @@ asks you on your phone.
 | Model | What it does here |
 |---|---|
 | Muse Voice (`muse-voice-transcribe-1.0`) | listens to the commentary |
-| Muse Spark (`muse-spark-1.3`) | picks the plays, and writes the titles and captions |
+| Muse Spark (`muse-spark-1.3`) | picks the plays, and writes the titles, the captions and each offer's one-line summary |
 | SAM 3.1 (`sam-3.1`, hosted by Meta) | follows the ball for the 9:16 crop |
 
 ffmpeg cuts and renders the clips. It is a tool, not a model.
@@ -67,7 +67,7 @@ flowchart TD
     F["Game video<br/>uploaded, or copied into a watched folder"]
     subgraph APP["The app: one Python process"]
         V["Muse Voice<br/>the commentary, with times"]
-        S["Muse Spark<br/>picks the plays · titles · captions"]
+        S["Muse Spark<br/>picks the plays · titles · captions<br/>each offer's one-line summary"]
         M["SAM 3.1<br/>finds the ball in each play"]
         R["ffmpeg<br/>cuts and renders each clip at 9:16"]
         O["The offer<br/>the game's best clips"]
